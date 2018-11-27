@@ -60,9 +60,8 @@ class RSSBot(Plugin):
             await self._poll_feeds()
         except asyncio.CancelledError:
             self.log.debug("Polling stopped")
-            pass
         except Exception:
-            self.log.exception("Failed to poll feeds")
+            self.log.exception("Fatal error while polling feeds")
 
     async def _broadcast(self, feed: Feed, entry: Entry, subscriptions: List[RoomID]) -> None:
         text = f"New post in {feed.title}: {entry.title} ({entry.link})"
@@ -96,7 +95,10 @@ class RSSBot(Plugin):
     async def _poll_feeds(self) -> None:
         self.log.debug("Polling started")
         while True:
-            await self._poll_once()
+            try:
+                await self._poll_once()
+            except Exception:
+                self.log.exception("Error while polling feeds")
             await asyncio.sleep(self.config["update_interval"] * 60, loop=self.loop)
 
     async def read_feed(self, url: str):
@@ -105,11 +107,23 @@ class RSSBot(Plugin):
         return feedparser.parse(content)
 
     @staticmethod
-    def find_entries(feed_id: int, entries: List[Any]) -> List[Entry]:
+    def get_date(entry: Any) -> datetime:
+        try:
+            return datetime.fromtimestamp(mktime(entry["published_parsed"]))
+        except (KeyError, TypeError):
+            pass
+        try:
+            return datetime.fromtimestamp(mktime(entry["date_parsed"]))
+        except (KeyError, TypeError):
+            pass
+        return datetime.now()
+
+    @classmethod
+    def find_entries(cls, feed_id: int, entries: List[Any]) -> List[Entry]:
         return [Entry(
             feed_id=feed_id,
             id=entry.id,
-            date=datetime.fromtimestamp(mktime(entry.published_parsed)),
+            date=cls.get_date(entry),
             title=entry.title,
             summary=entry.description,
             link=entry.link,
@@ -129,9 +143,13 @@ class RSSBot(Plugin):
             feed = self.db.get_feed_by_url(url)
             if not feed:
                 metadata = await self.read_feed(url)
-                feed = self.db.create_feed(url, metadata["channel"]["title"],
-                                           metadata["channel"]["description"],
-                                           metadata["channel"]["link"])
+                if metadata.bozo:
+                    await evt.reply("That doesn't look like a valid feed.")
+                    return
+                channel = metadata.get("channel", {})
+                feed = self.db.create_feed(url, channel.get("title", url),
+                                           channel.get("description", ""),
+                                           channel.get("link", ""))
                 self.db.add_entries(self.find_entries(feed.id, metadata.entries))
             self.db.subscribe(feed.id, evt.room_id, evt.sender)
             await evt.reply(f"Subscribed to feed ID {feed.id}: [{feed.title}]({feed.url})")
