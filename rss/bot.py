@@ -20,13 +20,11 @@ from string import Template
 import asyncio
 
 import aiohttp
-import commonmark
 import feedparser
 
 from maubot import Plugin, MessageEvent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
-from mautrix.types import (EventType, MessageType, RoomID, EventID, PowerLevelStateEventContent,
-                           TextMessageEventContent, Format)
+from mautrix.types import EventType, MessageType, RoomID, EventID, PowerLevelStateEventContent
 
 from .db import Database, Feed, Entry, Subscription
 
@@ -67,19 +65,15 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    def _send(self, feed: Feed, entry: Entry, template: Template, room_id: RoomID) -> Awaitable[EventID]:
-        message = template.safe_substitute({
+    def _send(self, feed: Feed, entry: Entry, template: Template, room_id: RoomID
+              ) -> Awaitable[EventID]:
+        return self.client.send_markdown(room_id, template.safe_substitute({
             "feed_url": feed.url,
             "feed_title": feed.title,
             "feed_subtitle": feed.subtitle,
             "feed_link": feed.link,
             **entry._asdict(),
-        })
-        content = TextMessageEventContent(msgtype=MessageType.NOTICE,
-                                          body=message,
-                                          format=Format.HTML,
-                                          formatted_body=commonmark.commonmark(message))
-        return self.client.send_message(room_id, content)
+        }), msgtype=MessageType.NOTICE)
 
     async def _broadcast(self, feed: Feed, entry: Entry, subscriptions: List[Subscription]) -> None:
         spam_sleep = self.config["spam_sleep"]
