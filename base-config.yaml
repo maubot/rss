@@ -3,3 +3,5 @@ update_interval: 60
 # The time to sleep between send requests when broadcasting a new feed entry.
 # Set to 0 to disable sleep or -1 to run all requests asynchronously at once.
 spam_sleep: 2
+# The prefix for all commands
+command_prefix: "!rss"

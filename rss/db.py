@@ -24,7 +24,7 @@ from sqlalchemy.engine.base import Engine
 
 from mautrix.types import UserID, RoomID
 
-Subscription = NamedTuple("Subscription", feed_id=int, room_id=str, user_id=str,
+Subscription = NamedTuple("Subscription", feed_id=int, room_id=RoomID, user_id=UserID,
                           notification_template=Template)
 Feed = NamedTuple("Feed", id=int, url=str, title=str, subtitle=str, link=str,
                   subscriptions=List[Subscription])
