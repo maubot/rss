@@ -34,6 +34,7 @@ class Config(BaseProxyConfig):
         helper.copy("update_interval")
         helper.copy("spam_sleep")
         helper.copy("command_prefix")
+        helper.copy("admins")
 
 
 CommandHandler = Callable[[MessageEvent, str, List[str]], Awaitable[None]]
@@ -181,6 +182,8 @@ class RSSBot(Plugin):
         return levels
 
     async def can_manage(self, evt: MessageEvent) -> bool:
+        if evt.sender in self.config["admins"]:
+            return True
         levels = await self.get_power_levels(evt.room_id)
         if levels.get_user_level(evt.sender) < levels.state_default:
             await evt.reply("You don't the permission to manage the subscriptions of this room.")

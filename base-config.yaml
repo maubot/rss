@@ -5,3 +5,6 @@ update_interval: 60
 spam_sleep: 2
 # The prefix for all commands
 command_prefix: "!rss"
+# Users who can bypass room permission checks
+admins:
+- "@user:example.com"
