@@ -1,0 +1,11 @@
+id: xyz.maubot.rss
+version: 0.1.0
+license: AGPL-3.0-or-later
+modules:
+- rss
+main_class: RSSBot
+extra_files:
+- base-config.yaml
+soft_dependencies:
+- python-magic>=0.4
+- pillow>=5
