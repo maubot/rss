@@ -9,3 +9,4 @@ extra_files:
 soft_dependencies:
 - python-magic>=0.4
 - pillow>=5
+database: true

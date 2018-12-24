@@ -22,9 +22,10 @@ import asyncio
 import aiohttp
 import feedparser
 
-from maubot import Plugin, MessageEvent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.types import EventType, MessageType, RoomID, EventID, PowerLevelStateEventContent
+from maubot import Plugin, MessageEvent
+from maubot.handlers import event
 
 from .db import Database, Feed, Entry, Subscription
 
@@ -65,9 +66,9 @@ class RSSBot(Plugin):
         self.cmd_prefix = self.config["command_prefix"]
 
     async def start(self) -> None:
+        await super().start()
         self.config.load_and_update()
-        self.db = Database(self.request_db_engine())
-        self.client.add_event_handler(self.event_handler, EventType.ROOM_MESSAGE)
+        self.db = Database(self.database)
         self.http = self.client.api.session
         self.power_level_cache = {}
         self.poll_task = asyncio.ensure_future(self.poll_feeds(), loop=self.loop)
@@ -81,7 +82,7 @@ class RSSBot(Plugin):
                     self.commands[alias] = handler
 
     async def stop(self) -> None:
-        self.client.remove_event_handler(self.event_handler, EventType.ROOM_MESSAGE)
+        await super().stop()
         self.poll_task.cancel()
 
     async def poll_feeds(self) -> None:
@@ -269,6 +270,7 @@ class RSSBot(Plugin):
             f"* {self.cmd_prefix} **subscriptions** - List subscriptions in current room\n"
             f"* {self.cmd_prefix} **help** - Print this message")
 
+    @event.on(EventType.ROOM_MESSAGE)
     async def event_handler(self, evt: MessageEvent) -> None:
         if evt.content.msgtype != MessageType.TEXT or not evt.content.body.startswith(
                 self.cmd_prefix):
