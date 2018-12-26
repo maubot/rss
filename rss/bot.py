@@ -25,7 +25,7 @@ import feedparser
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from mautrix.types import EventType, MessageType, RoomID, EventID, PowerLevelStateEventContent
 from maubot import Plugin, MessageEvent
-from maubot.handlers import event
+from maubot.handlers import command
 
 from .db import Database, Feed, Entry, Subscription
 
@@ -38,32 +38,15 @@ class Config(BaseProxyConfig):
         helper.copy("admins")
 
 
-CommandHandler = Callable[[MessageEvent, str, List[str]], Awaitable[None]]
-
-
-def command_handler(*args: str) -> Callable[[CommandHandler], CommandHandler]:
-    def wrapper(func: CommandHandler) -> CommandHandler:
-        setattr(func, "commands", args)
-        return func
-
-    return wrapper
-
-
 class RSSBot(Plugin):
     db: Database
     poll_task: asyncio.Future
     http: aiohttp.ClientSession
     power_level_cache: Dict[RoomID, Tuple[int, PowerLevelStateEventContent]]
-    cmd_prefix: str
-    commands: Dict[str, CommandHandler]
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
         return Config
-
-    def on_external_config_update(self) -> None:
-        self.config.load_and_update()
-        self.cmd_prefix = self.config["command_prefix"]
 
     async def start(self) -> None:
         await super().start()
@@ -72,14 +55,6 @@ class RSSBot(Plugin):
         self.http = self.client.api.session
         self.power_level_cache = {}
         self.poll_task = asyncio.ensure_future(self.poll_feeds(), loop=self.loop)
-        self.cmd_prefix = self.config["command_prefix"]
-
-        self.commands = {}
-        for attr_name in dir(self):
-            if attr_name.startswith("command_"):
-                handler = getattr(self, attr_name)
-                for alias in handler.commands:
-                    self.commands[alias] = handler
 
     async def stop(self) -> None:
         await super().stop()
@@ -191,14 +166,17 @@ class RSSBot(Plugin):
             return False
         return True
 
-    @command_handler("subscribe", "sub", "s")
-    async def command_subscribe(self, evt: MessageEvent, cmd: str, args: List[str]) -> None:
+    @command.new(name=lambda self: self.config["command_prefix"],
+                 help="Manage this RSS bot", require_subcommand=True)
+    async def rss(self) -> None:
+        pass
+
+    @rss.subcommand("subscribe", aliases=("s", "sub"),
+                    help="Subscribe this room to a feed.")
+    @command.argument("url", "feed URL", pass_raw=True)
+    async def subscribe(self, evt: MessageEvent, url: str) -> None:
         if not await self.can_manage(evt):
             return
-        elif len(args) == 0:
-            await evt.reply(f"**Usage:** `{self.cmd_prefix} {cmd} <feed URL>`")
-            return
-        url = " ".join(args)
         feed = self.db.get_feed_by_url(url)
         if not feed:
             metadata = feedparser.parse(await self.read_feed(url))
@@ -213,14 +191,11 @@ class RSSBot(Plugin):
         self.db.subscribe(feed.id, evt.room_id, evt.sender)
         await evt.reply(f"Subscribed to feed ID {feed.id}: [{feed.title}]({feed.url})")
 
-    @command_handler("unsubscribe", "unsub", "u")
-    async def command_unsubscribe(self, evt: MessageEvent, cmd: str, args: List[str]) -> None:
+    @rss.subcommand("unsubscribe", aliases=("u", "unsub"),
+                    help="Unsubscribe this room from a feed.")
+    @command.argument("feed_id", "feed ID", parser=int)
+    async def unsubscribe(self, evt: MessageEvent, feed_id: int) -> None:
         if not await self.can_manage(evt):
-            return
-        try:
-            feed_id = int(args[0])
-        except (ValueError, IndexError):
-            await evt.reply(f"**Usage:** `{self.cmd_prefix} {cmd} <feed ID>`")
             return
         sub, feed = self.db.get_subscription(feed_id, evt.room_id)
         if not sub:
@@ -229,15 +204,12 @@ class RSSBot(Plugin):
         self.db.unsubscribe(feed.id, evt.room_id)
         await evt.reply(f"Unsubscribed from feed ID {feed.id}: [{feed.title}]({feed.url})")
 
-    @command_handler("template", "tpl", "t")
-    async def command_template(self, evt: MessageEvent, cmd: str, args: List[str]) -> None:
+    @rss.subcommand("template", aliases=("t", "tpl"),
+                    help="Change the notification template for a subscription in this room")
+    @command.argument("feed_id", "feed ID", parser=int)
+    @command.argument("template", "new template", pass_raw=True)
+    async def command_template(self, evt: MessageEvent, feed_id: int, template: str) -> None:
         if not await self.can_manage(evt):
-            return
-        try:
-            feed_id = int(args[0])
-            template = " ".join(args[1:])
-        except (ValueError, IndexError):
-            await evt.reply(f"**Usage:** `{self.cmd_prefix} {cmd} <feed ID> <new template>`")
             return
         sub, feed = self.db.get_subscription(feed_id, evt.room_id)
         if not sub:
@@ -250,36 +222,11 @@ class RSSBot(Plugin):
         await evt.reply(f"Template for feed ID {feed.id} updated. Sample notification:")
         await self._send(feed, sample_entry, Template(template), sub.room_id)
 
-    @command_handler("subscriptions", "subs", "list", "ls")
-    async def command_subscriptions(self, evt: MessageEvent, _1: str, _2: List[str]) -> None:
+    @rss.subcommand("subscriptions", aliases=("ls", "list", "subs"),
+                    help="List the subscriptions in the current room.")
+    async def command_subscriptions(self, evt: MessageEvent) -> None:
         subscriptions = self.db.get_feeds_by_room(evt.room_id)
         await evt.reply("**Subscriptions in this room:**\n\n"
                         + "\n".join(f"* {feed.id} - [{feed.title}]({feed.url}) (subscribed by "
                                     f"[{subscriber}](https://matrix.to/#/{subscriber}))"
                                     for feed, subscriber in subscriptions))
-
-    @command_handler("help")
-    async def command_help(self, evt: MessageEvent, cmd: str, _2: List[str]) -> None:
-        await evt.reply(
-            ("Unknown command. " if cmd != "help" and cmd != "" else "") +
-            "Available commands:\n\n"
-            f"* {self.cmd_prefix} **subscribe** _<feed URL>_ - Subscribe to a feed\n"
-            f"* {self.cmd_prefix} **unsubscribe** _<feed ID>_ - Unsubscribe from a feed\n"
-            f"* {self.cmd_prefix} **template** _<feed ID>_ _<new template>_ - Change the "
-            f"notification template for a feed\n"
-            f"* {self.cmd_prefix} **subscriptions** - List subscriptions in current room\n"
-            f"* {self.cmd_prefix} **help** - Print this message")
-
-    @event.on(EventType.ROOM_MESSAGE)
-    async def event_handler(self, evt: MessageEvent) -> None:
-        if evt.content.msgtype != MessageType.TEXT or not evt.content.body.startswith(
-                self.cmd_prefix):
-            return
-
-        args = evt.content.body[len(self.cmd_prefix) + 1:].split(" ")
-        cmd, args = args[0].lower(), args[1:]
-        try:
-            handler = self.commands[cmd]
-        except KeyError:
-            handler = self.command_help
-        await handler(evt, cmd, args)
