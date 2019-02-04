@@ -6,7 +6,6 @@ modules:
 main_class: RSSBot
 extra_files:
 - base-config.yaml
-soft_dependencies:
-- python-magic>=0.4
-- pillow>=5
+dependencies:
+- feedparser>=5.1
 database: true
