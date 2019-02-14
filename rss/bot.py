@@ -141,9 +141,9 @@ class RSSBot(Plugin):
             feed_id=feed_id,
             id=entry.id,
             date=cls.get_date(entry),
-            title=entry.title,
-            summary=entry.description,
-            link=entry.link,
+            title=getattr(entry, "title", ""),
+            summary=getattr(entry, "description", ""),
+            link=getattr(entry, "link", ""),
         ) for entry in entries]
 
     async def get_power_levels(self, room_id: RoomID) -> PowerLevelStateEventContent:
