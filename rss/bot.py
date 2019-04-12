@@ -162,7 +162,7 @@ class RSSBot(Plugin):
             return True
         levels = await self.get_power_levels(evt.room_id)
         if levels.get_user_level(evt.sender) < levels.state_default:
-            await evt.reply("You don't the permission to manage the subscriptions of this room.")
+            await evt.reply("You don't have the permission to manage the subscriptions of this room.")
             return False
         return True
 
