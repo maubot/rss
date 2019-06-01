@@ -4,7 +4,8 @@ update_interval: 60
 # Set to 0 to disable sleep or -1 to run all requests asynchronously at once.
 spam_sleep: 2
 # The prefix for all commands
-command_prefix: "!rss"
+# It has to be prefixed with ! in matrix to be recognised
+command_prefix: "rss"
 # Users who can bypass room permission checks
 admins:
 - "@user:example.com"
