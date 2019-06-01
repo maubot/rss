@@ -118,9 +118,16 @@ class RSSBot(Plugin):
     async def read_feed(self, url: str) -> str:
         try:
             resp = await self.http.get(url)
-        except aiohttp.client_exceptions.ClientError:
+        except Exception:
+            self.log.exception(f"Error fetching {url}")
             return ""
-        content = await resp.text()
+        try:
+            content = await resp.text()
+        except UnicodeDecodeError:
+            try:
+                content = await resp.text(encoding="utf-8")
+            except:
+                content = str(await resp.read())[2:-1]
         return content
 
     @staticmethod
