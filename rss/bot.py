@@ -94,8 +94,8 @@ class RSSBot(Plugin):
         if not subs:
             return
         datas = await asyncio.gather(*[self.read_feed(feed.url) for feed in subs], loop=self.loop)
-        for feed, data in zip(subs, datas):
-            parsed_data = feedparser.parse(data)
+        for feed, (data, headers) in zip(subs, datas):
+            parsed_data = feedparser.parse(data, response_headers=headers)
             entries = parsed_data.entries
             new_entries = {entry.id: entry for entry in self.find_entries(feed.id, entries)}
             for old_entry in self.db.get_entries(feed.id):
@@ -115,12 +115,12 @@ class RSSBot(Plugin):
                 self.log.exception("Error while polling feeds")
             await asyncio.sleep(self.config["update_interval"] * 60, loop=self.loop)
 
-    async def read_feed(self, url: str) -> str:
+    async def read_feed(self, url: str) -> Tuple[str, Dict[str, str]]:
         try:
             resp = await self.http.get(url)
         except Exception:
             self.log.exception(f"Error fetching {url}")
-            return ""
+            return "", {}
         try:
             content = await resp.text()
         except UnicodeDecodeError:
@@ -128,7 +128,7 @@ class RSSBot(Plugin):
                 content = await resp.text(encoding="utf-8")
             except:
                 content = str(await resp.read())[2:-1]
-        return content
+        return content, {"Content-Location": url, **resp.headers}
 
     @staticmethod
     def get_date(entry: Any) -> datetime:
@@ -173,7 +173,8 @@ class RSSBot(Plugin):
         if type(state_level) != int:
             state_level = 50
         if user_level < state_level:
-            await evt.reply("You don't have the permission to manage the subscriptions of this room.")
+            await evt.reply(
+                "You don't have the permission to manage the subscriptions of this room.")
             return False
         return True
 
@@ -190,7 +191,8 @@ class RSSBot(Plugin):
             return
         feed = self.db.get_feed_by_url(url)
         if not feed:
-            metadata = feedparser.parse(await self.read_feed(url))
+            data, headers = await self.read_feed(url)
+            metadata = feedparser.parse(data, response_headers=headers)
             if metadata.bozo:
                 await evt.reply("That doesn't look like a valid feed.")
                 return
