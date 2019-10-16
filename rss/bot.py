@@ -128,7 +128,7 @@ class RSSBot(Plugin):
                 content = await resp.text(encoding="utf-8")
             except:
                 content = str(await resp.read())[2:-1]
-        return content, {"Content-Location": url, **resp.headers}
+        return content, {"Content-Location": url, **resp.headers, "Content-Encoding": "identity"}
 
     @staticmethod
     def get_date(entry: Any) -> datetime:
