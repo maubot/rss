@@ -132,6 +132,11 @@ class Database:
         except (ValueError, StopIteration):
             return (None, None)
 
+    def update_room_id(self, old: RoomID, new: RoomID) -> None:
+        self.db.execute(self.subscription.update()
+                        .where(self.subscription.c.room_id == old)
+                        .values(room_id=new))
+
     def create_feed(self, url: str, title: str, subtitle: str, link: str) -> Feed:
         res = self.db.execute(self.feed.insert().values(url=url, title=title, subtitle=subtitle,
                                                         link=link))

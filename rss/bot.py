@@ -13,7 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from typing import Type, List, Any, Dict, Tuple, Awaitable, Callable
+from typing import Type, List, Any, Dict, Tuple, Awaitable
 from datetime import datetime
 from time import mktime, time
 from string import Template
@@ -23,9 +23,10 @@ import aiohttp
 import feedparser
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
-from mautrix.types import EventType, MessageType, RoomID, EventID, PowerLevelStateEventContent
+from mautrix.types import (StateEvent, EventType, MessageType, RoomID, EventID,
+                           PowerLevelStateEventContent)
 from maubot import Plugin, MessageEvent
-from maubot.handlers import command
+from maubot.handlers import command, event
 
 from .db import Database, Feed, Entry, Subscription
 
@@ -243,3 +244,9 @@ class RSSBot(Plugin):
                         + "\n".join(f"* {feed.id} - [{feed.title}]({feed.url}) (subscribed by "
                                     f"[{subscriber}](https://matrix.to/#/{subscriber}))"
                                     for feed, subscriber in subscriptions))
+
+    @event.on(EventType.ROOM_TOMBSTONE)
+    async def tombstone(self, evt: StateEvent) -> None:
+        if not evt.content.replacement_room:
+            return
+        self.db.update_room_id(evt.room_id, evt.content.replacement_room)
