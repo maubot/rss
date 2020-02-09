@@ -135,11 +135,11 @@ class RSSBot(Plugin):
     def get_date(entry: Any) -> datetime:
         try:
             return datetime.fromtimestamp(mktime(entry["published_parsed"]))
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError):
             pass
         try:
             return datetime.fromtimestamp(mktime(entry["date_parsed"]))
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError):
             pass
         return datetime.now()
 
