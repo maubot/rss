@@ -20,6 +20,7 @@ from string import Template
 import asyncio
 
 import aiohttp
+import hashlib
 import feedparser
 
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
@@ -147,7 +148,19 @@ class RSSBot(Plugin):
     def find_entries(cls, feed_id: int, entries: List[Any]) -> List[Entry]:
         return [Entry(
             feed_id=feed_id,
-            id=entry.id,
+            id=getattr(
+                entry,
+                "id",
+                hashlib.sha1(
+                    " ".join(
+                        [
+                            getattr(entry, "title", ""),
+                            getattr(entry, "description", ""),
+                            getattr(entry, "link", ""),
+                        ]
+                    ).encode("utf-8")
+                ).hexdigest(),
+            ),
             date=cls.get_date(entry),
             title=getattr(entry, "title", ""),
             summary=getattr(entry, "description", ""),
