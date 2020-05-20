@@ -1,5 +1,5 @@
 # rss - A maubot plugin to subscribe to RSS/Atom feeds.
-# Copyright (C) 2019 Tulir Asokan
+# Copyright (C) 2020 Tulir Asokan
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -130,7 +130,7 @@ class Database:
                     if room_id else None,
                     Feed(feed_id, url, title, subtitle, link, []))
         except (ValueError, StopIteration):
-            return (None, None)
+            return None, None
 
     def update_room_id(self, old: RoomID, new: RoomID) -> None:
         self.db.execute(self.subscription.update()

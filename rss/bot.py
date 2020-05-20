@@ -1,5 +1,5 @@
 # rss - A maubot plugin to subscribe to RSS/Atom feeds.
-# Copyright (C) 2019 Tulir Asokan
+# Copyright (C) 2020 Tulir Asokan
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -78,7 +78,7 @@ class RSSBot(Plugin):
             "feed_subtitle": feed.subtitle,
             "feed_link": feed.link,
             **entry._asdict(),
-        }), msgtype=MessageType.NOTICE)
+        }), msgtype=MessageType.NOTICE, allow_html=True)
 
     async def _broadcast(self, feed: Feed, entry: Entry, subscriptions: List[Subscription]) -> None:
         spam_sleep = self.config["spam_sleep"]
@@ -148,19 +148,11 @@ class RSSBot(Plugin):
     def find_entries(cls, feed_id: int, entries: List[Any]) -> List[Entry]:
         return [Entry(
             feed_id=feed_id,
-            id=getattr(
-                entry,
-                "id",
-                hashlib.sha1(
-                    " ".join(
-                        [
-                            getattr(entry, "title", ""),
-                            getattr(entry, "description", ""),
-                            getattr(entry, "link", ""),
-                        ]
-                    ).encode("utf-8")
-                ).hexdigest(),
-            ),
+            id=(getattr(entry, "id") or
+                hashlib.sha1(" ".join([getattr(entry, "title", ""),
+                                       getattr(entry, "description", ""),
+                                       getattr(entry, "link", "")]).encode("utf-8")
+                             ).hexdigest()),
             date=cls.get_date(entry),
             title=getattr(entry, "title", ""),
             summary=getattr(entry, "description", ""),
@@ -187,8 +179,8 @@ class RSSBot(Plugin):
         if type(state_level) != int:
             state_level = 50
         if user_level < state_level:
-            await evt.reply(
-                "You don't have the permission to manage the subscriptions of this room.")
+            await evt.reply("You don't have the permission to "
+                            "manage the subscriptions of this room.")
             return False
         return True
 
