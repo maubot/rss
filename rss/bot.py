@@ -40,6 +40,21 @@ class Config(BaseProxyConfig):
         helper.copy("admins")
 
 
+class BoolArgument(command.Argument):
+    def __init__(self, name: str, label: str = None, *, required: bool = False) -> None:
+        super().__init__(name, label, required=required, pass_raw=False)
+
+    def match(self, val: str, **kwargs) -> Tuple[str, Any]:
+        part = val.split(" ")[0].lower()
+        if part in ("f", "false", "n", "no", "0"):
+            res = False
+        elif part in ("t", "true", "y", "yes", "1"):
+            res = True
+        else:
+            raise ValueError("invalid boolean")
+        return val[len(part):], res
+
+
 class RSSBot(Plugin):
     db: Database
     poll_task: asyncio.Future
@@ -70,20 +85,18 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    def _send(self, feed: Feed, entry: Entry, template: Template, room_id: RoomID
-              ) -> Awaitable[EventID]:
-        return self.client.send_markdown(room_id, template.safe_substitute({
+    def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> Awaitable[EventID]:
+        return self.client.send_markdown(sub.room_id, sub.notification_template.safe_substitute({
             "feed_url": feed.url,
             "feed_title": feed.title,
             "feed_subtitle": feed.subtitle,
             "feed_link": feed.link,
             **entry._asdict(),
-        }), msgtype=MessageType.NOTICE, allow_html=True)
+        }), msgtype=MessageType.NOTICE if sub.send_notice else MessageType.TEXT, allow_html=True)
 
     async def _broadcast(self, feed: Feed, entry: Entry, subscriptions: List[Subscription]) -> None:
         spam_sleep = self.config["spam_sleep"]
-        tasks = [self._send(feed, entry, sub.notification_template, sub.room_id)
-                 for sub in subscriptions]
+        tasks = [self._send(feed, entry, sub) for sub in subscriptions]
         if spam_sleep >= 0:
             for task in tasks:
                 await task
@@ -148,7 +161,7 @@ class RSSBot(Plugin):
     def find_entries(cls, feed_id: int, entries: List[Any]) -> List[Entry]:
         return [Entry(
             feed_id=feed_id,
-            id=(getattr(entry, "id") or
+            id=(getattr(entry, "id", None) or
                 hashlib.sha1(" ".join([getattr(entry, "title", ""),
                                        getattr(entry, "description", ""),
                                        getattr(entry, "link", "")]).encode("utf-8")
@@ -240,6 +253,21 @@ class RSSBot(Plugin):
                              "http://example.com")
         await evt.reply(f"Template for feed ID {feed.id} updated. Sample notification:")
         await self._send(feed, sample_entry, Template(template), sub.room_id)
+
+    @rss.subcommand("notice", aliases=("n",),
+                    help="Set whether or not the bot should send updates as m.notice")
+    @command.argument("feed_id", "feed ID", parser=int)
+    @BoolArgument("setting", "true/false")
+    async def command_notice(self, evt: MessageEvent, feed_id: int, setting: bool) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = self.db.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        self.db.set_send_notice(feed.id, evt.room_id, setting)
+        send_type = "m.notice" if setting else "m.text"
+        await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
 
     @rss.subcommand("subscriptions", aliases=("ls", "list", "subs"),
                     help="List the subscriptions in the current room.")

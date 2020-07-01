@@ -17,15 +17,15 @@ from typing import Iterable, NamedTuple, List, Optional, Dict, Tuple
 from datetime import datetime
 from string import Template
 
-from sqlalchemy import (Column, String, Integer, DateTime, Text, ForeignKey,
+from sqlalchemy import (Column, String, Integer, DateTime, Text, Boolean, ForeignKey,
                         Table, MetaData,
-                        select, and_)
+                        select, and_, true)
 from sqlalchemy.engine.base import Engine
 
 from mautrix.types import UserID, RoomID
 
 Subscription = NamedTuple("Subscription", feed_id=int, room_id=RoomID, user_id=UserID,
-                          notification_template=Template)
+                          notification_template=Template, send_notice=bool)
 Feed = NamedTuple("Feed", id=int, url=str, title=str, subtitle=str, link=str,
                   subscriptions=List[Subscription])
 Entry = NamedTuple("Entry", feed_id=int, id=str, date=datetime, title=str, summary=str, link=str)
@@ -52,7 +52,9 @@ class Database:
                                          primary_key=True),
                                   Column("room_id", String(255), primary_key=True),
                                   Column("user_id", String(255), nullable=False),
-                                  Column("notification_template", String(255), nullable=True))
+                                  Column("notification_template", String(255), nullable=True),
+                                  Column("send_notice", Boolean, nullable=False,
+                                         server_default=true()))
         self.entry = Table("entry", metadata,
                            Column("feed_id", Integer, ForeignKey("feed.id"), primary_key=True),
                            Column("id", String(255), primary_key=True),
@@ -62,21 +64,68 @@ class Database:
                            Column("link", Text, nullable=False))
         self.version = Table("version", metadata,
                              Column("version", Integer, primary_key=True))
-        metadata.create_all(db)
+        self.upgrade()
+
+    def upgrade(self) -> None:
+        try:
+            version, = next(self.db.execute(select([self.version.c.version])))
+        except (StopIteration, IndexError):
+            version = 0
+        if version == 0:
+            self.db.execute("""CREATE TABLE IF NOT EXISTS feed (
+                id INTEGER NOT NULL,
+                url TEXT NOT NULL,
+                title TEXT NOT NULL,
+                subtitle TEXT NOT NULL,
+                link TEXT NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE (url)
+            )""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS version (
+                version INTEGER NOT NULL,
+                PRIMARY KEY (version)
+            )""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS subscription (
+                feed_id INTEGER NOT NULL,
+                room_id VARCHAR(255) NOT NULL,
+                user_id VARCHAR(255) NOT NULL,
+                notification_template VARCHAR(255),
+                PRIMARY KEY (feed_id, room_id),
+                FOREIGN KEY(feed_id) REFERENCES feed (id)
+            )""")
+            self.db.execute("""CREATE TABLE IF NOT EXISTS entry (
+                feed_id INTEGER NOT NULL,
+                id VARCHAR(255) NOT NULL,
+                date DATETIME NOT NULL,
+                title TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                link TEXT NOT NULL,
+                PRIMARY KEY (feed_id, id),
+                FOREIGN KEY(feed_id) REFERENCES feed (id)
+            )""")
+            version = 1
+        if version == 1:
+            self.db.execute("ALTER TABLE subscription ADD COLUMN send_notice BOOLEAN DEFAULT true")
+            version = 2
+        self.db.execute(self.version.delete())
+        self.db.execute(self.version.insert().values(version=version))
 
     def get_feeds(self) -> Iterable[Feed]:
         rows = self.db.execute(select([self.feed,
                                        self.subscription.c.room_id,
                                        self.subscription.c.user_id,
-                                       self.subscription.c.notification_template])
+                                       self.subscription.c.notification_template,
+                                       self.subscription.c.send_notice])
                                .where(self.subscription.c.feed_id == self.feed.c.id))
         map: Dict[int, Feed] = {}
         for row in rows:
-            feed_id, url, title, subtitle, link, room_id, user_id, notification_template = row
+            (feed_id, url, title, subtitle, link,
+             room_id, user_id, notification_template, send_notice) = row
             map.setdefault(feed_id, Feed(feed_id, url, title, subtitle, link, subscriptions=[]))
             map[feed_id].subscriptions.append(
                 Subscription(feed_id=feed_id, room_id=room_id, user_id=user_id,
-                             notification_template=Template(notification_template)))
+                             notification_template=Template(notification_template),
+                             send_notice=send_notice))
         return map.values()
 
     def get_feeds_by_room(self, room_id: RoomID) -> Iterable[Tuple[Feed, UserID]]:
@@ -120,13 +169,14 @@ class Database:
                                                                        Optional[Feed]]:
         tbl = self.subscription
         rows = self.db.execute(select([self.feed, tbl.c.room_id, tbl.c.user_id,
-                                       tbl.c.notification_template])
+                                       tbl.c.notification_template, tbl.c.send_notice])
                                .where(and_(tbl.c.feed_id == feed_id, tbl.c.room_id == room_id,
                                            self.feed.c.id == feed_id)))
         try:
-            feed_id, url, title, subtitle, link, room_id, user_id, template = next(rows)
+            (feed_id, url, title, subtitle, link,
+             room_id, user_id, template, send_notice) = next(rows)
             notification_template = Template(template)
-            return (Subscription(feed_id, room_id, user_id, notification_template)
+            return (Subscription(feed_id, room_id, user_id, notification_template, send_notice)
                     if room_id else None,
                     Feed(feed_id, url, title, subtitle, link, []))
         except (ValueError, StopIteration):
@@ -158,3 +208,9 @@ class Database:
         self.db.execute(tbl.update()
                         .where(and_(tbl.c.feed_id == feed_id, tbl.c.room_id == room_id))
                         .values(notification_template=template))
+
+    def set_send_notice(self, feed_id: int, room_id: RoomID, send_notice: bool) -> None:
+        tbl = self.subscription
+        self.db.execute(tbl.update()
+                        .where(and_(tbl.c.feed_id == feed_id, tbl.c.room_id == room_id))
+                        .values(send_notice=send_notice))
