@@ -108,7 +108,7 @@ class RSSBot(Plugin):
         subs = self.db.get_feeds()
         if not subs:
             return
-        datas = await asyncio.gather(*[self.read_feed(feed.url) for feed in subs], loop=self.loop)
+        datas = await asyncio.gather(*[self.read_feed(feed.url) for feed in subs])
         for feed, (data, headers) in zip(subs, datas):
             parsed_data = feedparser.parse(data, response_headers=headers)
             entries = parsed_data.entries
