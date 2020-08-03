@@ -109,7 +109,7 @@ class RSSBot(Plugin):
         subs = self.db.get_feeds()
         if not subs:
             return
-        for res in asyncio.as_completed([self.parse_feed(feed=feed) for feed in subs]):
+        for res in asyncio.as_completed([self.try_parse_feed(feed=feed) for feed in subs]):
             feed, entries = await res
             if not entries:
                 continue
@@ -134,6 +134,13 @@ class RSSBot(Plugin):
             except Exception:
                 self.log.exception("Error while polling feeds")
             await asyncio.sleep(self.config["update_interval"] * 60, loop=self.loop)
+
+    async def try_parse_feed(self, feed: Optional[Feed] = None) -> Tuple[Feed, Iterable[Entry]]:
+        try:
+            return await self.parse_feed(feed=feed)
+        except Exception:
+            self.log.exception(f"Failed to parse feed {feed.id} / {feed.url}")
+            return feed, []
 
     async def parse_feed(self, *, feed: Optional[Feed] = None, url: Optional[str] = None
                          ) -> Tuple[Feed, Iterable[Entry]]:
