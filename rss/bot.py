@@ -199,7 +199,8 @@ class RSSBot(Plugin):
         headers = {"Content-Location": feed.url, **resp.headers, "Content-Encoding": "identity"}
         parsed_data = feedparser.parse(content, response_headers=headers)
         if parsed_data.bozo:
-            raise ValueError("Feed is not valid")
+            if not isinstance(parsed_data.bozo_exception, feedparser.ThingsNobodyCaresAboutButMe):
+                raise parsed_data.bozo_exception
         feed = Feed(id=feed.id, url=feed.url, title=parsed_data.get("title", feed.url),
                     subtitle=parsed_data.get("description", ""), link=parsed_data.get("link", ""),
                     subscriptions=feed.subscriptions)
