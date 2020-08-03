@@ -144,7 +144,9 @@ class RSSBot(Plugin):
         elif url is not None:
             raise ValueError("Only one of feed or url must be set")
         resp = await self.http.get(feed.url)
-        if resp.headers["Content-Type"] == "application/json":
+        # No need to check for vendor prefixes and such, the JSON feed spec requires
+        # the mime type to be application/json
+        if resp.headers["Content-Type"].startswith("application/json"):
             return await self._parse_json(feed, resp)
         else:
             return await self._parse_rss(feed, resp)
@@ -153,6 +155,8 @@ class RSSBot(Plugin):
     async def _parse_json(cls, feed: Feed, resp: aiohttp.ClientResponse
                           ) -> Tuple[Feed, Iterable[Entry]]:
         content = await resp.json()
+        if content["version"] != "https://jsonfeed.org/version/1":
+            raise ValueError("Unsupported JSON feed version")
         if not isinstance(content["items"], list):
             raise ValueError("Feed is not a valid JSON feed (items is not a list)")
         feed = Feed(id=feed.id, title=content["title"], subtitle=content.get("subtitle", ""),
