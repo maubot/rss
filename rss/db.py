@@ -144,10 +144,14 @@ class Database:
         return (Entry(*row) for row in
                 self.db.execute(select([self.entry]).where(self.entry.c.feed_id == feed_id)))
 
-    def add_entries(self, entries: Iterable[Entry]) -> None:
+    def add_entries(self, entries: Iterable[Entry], override_feed_id: Optional[int] = None) -> None:
         if not entries:
             return
-        self.db.execute(self.entry.insert(), [entry._asdict() for entry in entries])
+        entries = [entry._asdict() for entry in entries]
+        if override_feed_id is not None:
+            for entry in entries:
+                entry["feed_id"] = override_feed_id
+        self.db.execute(self.entry.insert(), entries)
 
     def get_feed_by_url(self, url: str) -> Optional[Feed]:
         rows = self.db.execute(select([self.feed]).where(self.feed.c.url == url))
@@ -187,11 +191,11 @@ class Database:
                         .where(self.subscription.c.room_id == old)
                         .values(room_id=new))
 
-    def create_feed(self, url: str, title: str, subtitle: str, link: str) -> Feed:
-        res = self.db.execute(self.feed.insert().values(url=url, title=title, subtitle=subtitle,
-                                                        link=link))
-        return Feed(id=res.inserted_primary_key[0], url=url, title=title, subtitle=subtitle,
-                    link=link, subscriptions=[])
+    def create_feed(self, info: Feed) -> Feed:
+        res = self.db.execute(self.feed.insert().values(url=info.url, title=info.title,
+                                                        subtitle=info.subtitle, link=info.link))
+        return Feed(id=res.inserted_primary_key[0], url=info.url, title=info.title,
+                    subtitle=info.subtitle, link=info.link, subscriptions=[])
 
     def subscribe(self, feed_id: int, room_id: RoomID, user_id: UserID) -> None:
         self.db.execute(self.subscription.insert().values(
