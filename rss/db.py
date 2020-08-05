@@ -20,6 +20,7 @@ from string import Template
 from sqlalchemy import (Column, String, Integer, DateTime, Text, Boolean, ForeignKey,
                         Table, MetaData,
                         select, and_, true)
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.engine.base import Engine
 
 from mautrix.types import UserID, RoomID
@@ -67,6 +68,7 @@ class Database:
         self.upgrade()
 
     def upgrade(self) -> None:
+        self.db.execute("CREATE TABLE IF NOT EXISTS version (version INTEGER PRIMARY KEY)")
         try:
             version, = next(self.db.execute(select([self.version.c.version])))
         except (StopIteration, IndexError):
@@ -80,10 +82,6 @@ class Database:
                 link TEXT NOT NULL,
                 PRIMARY KEY (id),
                 UNIQUE (url)
-            )""")
-            self.db.execute("""CREATE TABLE IF NOT EXISTS version (
-                version INTEGER NOT NULL,
-                PRIMARY KEY (version)
             )""")
             self.db.execute("""CREATE TABLE IF NOT EXISTS subscription (
                 feed_id INTEGER NOT NULL,
