@@ -20,7 +20,6 @@ from string import Template
 from sqlalchemy import (Column, String, Integer, DateTime, Text, Boolean, ForeignKey,
                         Table, MetaData,
                         select, and_, true)
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.engine.base import Engine
 
 from mautrix.types import UserID, RoomID
