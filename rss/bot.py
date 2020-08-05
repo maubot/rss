@@ -201,8 +201,9 @@ class RSSBot(Plugin):
         if parsed_data.bozo:
             if not isinstance(parsed_data.bozo_exception, feedparser.ThingsNobodyCaresAboutButMe):
                 raise parsed_data.bozo_exception
-        feed = Feed(id=feed.id, url=feed.url, title=parsed_data.get("title", feed.url),
-                    subtitle=parsed_data.get("description", ""), link=parsed_data.get("link", ""),
+        feed_data = parsed_data.get("feed", {})
+        feed = Feed(id=feed.id, url=feed.url, title=feed_data.get("title", feed.url),
+                    subtitle=feed_data.get("description", ""), link=feed_data.get("link", ""),
                     subscriptions=feed.subscriptions)
         return feed, (cls._parse_rss_entry(feed.id, entry) for entry in parsed_data.entries)
 
