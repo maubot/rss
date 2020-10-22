@@ -18,7 +18,6 @@ from datetime import datetime
 from time import mktime, time
 from string import Template
 import asyncio
-import json
 
 import aiohttp
 import hashlib
