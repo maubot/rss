@@ -1,5 +1,5 @@
 # rss - A maubot plugin to subscribe to RSS/Atom feeds.
-# Copyright (C) 2020 Tulir Asokan
+# Copyright (C) 2021 Tulir Asokan
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published by
@@ -18,6 +18,7 @@ from datetime import datetime
 from time import mktime, time
 from string import Template
 import asyncio
+import time
 
 import aiohttp
 import hashlib
@@ -31,10 +32,13 @@ from maubot.handlers import command, event
 
 from .db import Database, Feed, Entry, Subscription
 
+rss_change_level = EventType.find("xyz.maubot.rss", t_class=EventType.Class.STATE)
+
 
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
         helper.copy("update_interval")
+        helper.copy("max_backoff")
         helper.copy("spam_sleep")
         helper.copy("command_prefix")
         helper.copy("admins")
@@ -108,14 +112,25 @@ class RSSBot(Plugin):
         subs = self.db.get_feeds()
         if not subs:
             return
-        for res in asyncio.as_completed([self.try_parse_feed(feed=feed) for feed in subs]):
+        now = int(time.time())
+        tasks = [self.try_parse_feed(feed=feed) for feed in subs if feed.next_retry < now]
+        feed: Feed
+        entries: Iterable[Entry]
+        for res in asyncio.as_completed(tasks):
             feed, entries = await res
             if not entries:
+                error_count = feed.error_count + 1
+                next_retry_delay = self.config["update_interval"] * 60 * error_count
+                next_retry_delay = min(next_retry_delay, self.config["max_backoff"] * 60)
+                next_retry = int(time.time() + next_retry_delay)
+                self.db.set_backoff(feed, error_count, next_retry)
                 continue
+            elif feed.error_count > 0:
+                self.db.set_backoff(feed, error_count=0, next_retry=0)
             try:
                 new_entries = {entry.id: entry for entry in entries}
             except Exception:
-                self.log.exception(f"Error items of {feed.url}")
+                self.log.exception(f"Weird error in items of {feed.url}")
                 continue
             for old_entry in self.db.get_entries(feed.id):
                 new_entries.pop(old_entry.id, None)
@@ -137,8 +152,8 @@ class RSSBot(Plugin):
     async def try_parse_feed(self, feed: Optional[Feed] = None) -> Tuple[Feed, Iterable[Entry]]:
         try:
             return await self.parse_feed(feed=feed)
-        except Exception:
-            self.log.exception(f"Failed to parse feed {feed.id} / {feed.url}")
+        except Exception as e:
+            self.log.warning(f"Failed to parse feed {feed.id} / {feed.url}: {e}")
             return feed, []
 
     async def parse_feed(self, *, feed: Optional[Feed] = None, url: Optional[str] = None
@@ -146,7 +161,7 @@ class RSSBot(Plugin):
         if feed is None:
             if url is None:
                 raise ValueError("Either feed or url must be set")
-            feed = Feed(-1, url, "", "", "", [])
+            feed = Feed(-1, url, "", "", "", 0, 0, [])
         elif url is not None:
             raise ValueError("Only one of feed or url must be set")
         resp = await self.http.get(feed.url)
@@ -167,7 +182,7 @@ class RSSBot(Plugin):
             raise ValueError("Feed is not a valid JSON feed (items is not a list)")
         feed = Feed(id=feed.id, title=content["title"], subtitle=content.get("subtitle", ""),
                     url=feed.url, link=content.get("home_page_url", ""),
-                    subscriptions=feed.subscriptions)
+                    next_retry=0, error_count=0, subscriptions=feed.subscriptions)
         return feed, (cls._parse_json_entry(feed.id, entry) for entry in content["items"])
 
     @classmethod
@@ -203,7 +218,7 @@ class RSSBot(Plugin):
         feed_data = parsed_data.get("feed", {})
         feed = Feed(id=feed.id, url=feed.url, title=feed_data.get("title", feed.url),
                     subtitle=feed_data.get("description", ""), link=feed_data.get("link", ""),
-                    subscriptions=feed.subscriptions)
+                    error_count=0, next_retry=0, subscriptions=feed.subscriptions)
         return feed, (cls._parse_rss_entry(feed.id, entry) for entry in parsed_data.entries)
 
     @classmethod
@@ -249,8 +264,8 @@ class RSSBot(Plugin):
             return True
         levels = await self.get_power_levels(evt.room_id)
         user_level = levels.get_user_level(evt.sender)
-        state_level = levels.events.get("xyz.maubot.rss", levels.state_default)
-        if type(state_level) != int:
+        state_level = levels.get_event_level(rss_change_level)
+        if not isinstance(state_level, int):
             state_level = 50
         if user_level < state_level:
             await evt.reply("You don't have the permission to "
@@ -278,6 +293,8 @@ class RSSBot(Plugin):
                 return
             feed = self.db.create_feed(info)
             self.db.add_entries(entries, override_feed_id=feed.id)
+        elif feed.error_count > 0:
+            self.db.set_backoff(feed, error_count=feed.error_count, next_retry=0)
         self.db.subscribe(feed.id, evt.room_id, evt.sender)
         await evt.reply(f"Subscribed to feed ID {feed.id}: [{feed.title}]({feed.url})")
 

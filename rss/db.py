@@ -26,8 +26,8 @@ from mautrix.types import UserID, RoomID
 
 Subscription = NamedTuple("Subscription", feed_id=int, room_id=RoomID, user_id=UserID,
                           notification_template=Template, send_notice=bool)
-Feed = NamedTuple("Feed", id=int, url=str, title=str, subtitle=str, link=str,
-                  subscriptions=List[Subscription])
+Feed = NamedTuple("Feed", id=int, url=str, title=str, subtitle=str, link=str, next_retry=int,
+                  error_count=int, subscriptions=List[Subscription])
 Entry = NamedTuple("Entry", feed_id=int, id=str, date=datetime, title=str, summary=str, link=str)
 
 
@@ -46,7 +46,9 @@ class Database:
                           Column("url", Text, nullable=False, unique=True),
                           Column("title", Text, nullable=False),
                           Column("subtitle", Text, nullable=False),
-                          Column("link", Text, nullable=False))
+                          Column("link", Text, nullable=False),
+                          Column("next_retry", Integer, nullable=False),
+                          Column("error_count", Integer, nullable=False))
         self.subscription = Table("subscription", metadata,
                                   Column("feed_id", Integer, ForeignKey("feed.id"),
                                          primary_key=True),
@@ -104,6 +106,10 @@ class Database:
         if version == 1:
             self.db.execute("ALTER TABLE subscription ADD COLUMN send_notice BOOLEAN DEFAULT true")
             version = 2
+        if version == 2:
+            self.db.execute("ALTER TABLE feed ADD COLUMN next_retry BIGINT DEFAULT 0")
+            self.db.execute("ALTER TABLE feed ADD COLUMN error_count BIGINT DEFAULT 0")
+            version = 3
         self.db.execute(self.version.delete())
         self.db.execute(self.version.insert().values(version=version))
 
@@ -116,9 +122,10 @@ class Database:
                                .where(self.subscription.c.feed_id == self.feed.c.id))
         map: Dict[int, Feed] = {}
         for row in rows:
-            (feed_id, url, title, subtitle, link,
+            (feed_id, url, title, subtitle, link, next_retry, error_count,
              room_id, user_id, notification_template, send_notice) = row
-            map.setdefault(feed_id, Feed(feed_id, url, title, subtitle, link, subscriptions=[]))
+            map.setdefault(feed_id, Feed(feed_id, url, title, subtitle, link, next_retry,
+                                         error_count, subscriptions=[]))
             map[feed_id].subscriptions.append(
                 Subscription(feed_id=feed_id, room_id=room_id, user_id=user_id,
                              notification_template=Template(notification_template),
@@ -126,8 +133,10 @@ class Database:
         return map.values()
 
     def get_feeds_by_room(self, room_id: RoomID) -> Iterable[Tuple[Feed, UserID]]:
-        return ((Feed(feed_id, url, title, subtitle, link, subscriptions=[]), user_id)
-                for (feed_id, url, title, subtitle, link, user_id) in
+        return ((Feed(feed_id, url, title, subtitle, link, next_retry, error_count,
+                      subscriptions=[]),
+                 user_id)
+                for (feed_id, url, title, subtitle, link, next_retry, error_count, user_id) in
                 self.db.execute(select([self.feed, self.subscription.c.user_id])
                                 .where(and_(self.subscription.c.room_id == room_id,
                                             self.subscription.c.feed_id == self.feed.c.id))))
@@ -174,12 +183,12 @@ class Database:
                                .where(and_(tbl.c.feed_id == feed_id, tbl.c.room_id == room_id,
                                            self.feed.c.id == feed_id)))
         try:
-            (feed_id, url, title, subtitle, link,
+            (feed_id, url, title, subtitle, link, next_retry, error_count,
              room_id, user_id, template, send_notice) = next(rows)
             notification_template = Template(template)
             return (Subscription(feed_id, room_id, user_id, notification_template, send_notice)
                     if room_id else None,
-                    Feed(feed_id, url, title, subtitle, link, []))
+                    Feed(feed_id, url, title, subtitle, link, next_retry, error_count, []))
         except (ValueError, StopIteration):
             return None, None
 
@@ -190,9 +199,16 @@ class Database:
 
     def create_feed(self, info: Feed) -> Feed:
         res = self.db.execute(self.feed.insert().values(url=info.url, title=info.title,
-                                                        subtitle=info.subtitle, link=info.link))
+                                                        subtitle=info.subtitle, link=info.link,
+                                                        next_retry=info.next_retry))
         return Feed(id=res.inserted_primary_key[0], url=info.url, title=info.title,
-                    subtitle=info.subtitle, link=info.link, subscriptions=[])
+                    subtitle=info.subtitle, link=info.link, next_retry=info.next_retry,
+                    error_count=info.error_count, subscriptions=[])
+
+    def set_backoff(self, info: Feed, error_count: int, next_retry: int) -> None:
+        self.db.execute(self.feed.update()
+                        .where(self.feed.c.id == info.id)
+                        .values(error_count=error_count, next_retry=next_retry))
 
     def subscribe(self, feed_id: int, room_id: RoomID, user_id: UserID) -> None:
         self.db.execute(self.subscription.insert().values(
