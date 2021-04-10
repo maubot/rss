@@ -294,8 +294,15 @@ class RSSBot(Plugin):
             self.db.add_entries(entries, override_feed_id=feed.id)
         elif feed.error_count > 0:
             self.db.set_backoff(feed, error_count=feed.error_count, next_retry=0)
-        self.db.subscribe(feed.id, evt.room_id, evt.sender)
-        await evt.reply(f"Subscribed to feed ID {feed.id}: [{feed.title}]({feed.url})")
+        feed_info = f"feed ID {feed.id}: [{feed.title}]({feed.url})"
+        sub, _ = self.db.get_subscription(feed.id, evt.room_id)
+        if sub is not None:
+            subscriber = ("You" if sub.user_id == evt.sender
+                          else f"[{sub.user_id}](https://matrix.to/#/{sub.user_id})")
+            await evt.reply(f"{subscriber} had already subscribed this room to {feed_info}")
+        else:
+            self.db.subscribe(feed.id, evt.room_id, evt.sender)
+            await evt.reply(f"Subscribed to {feed_info}")
 
     @rss.subcommand("unsubscribe", aliases=("u", "unsub"),
                     help="Unsubscribe this room from a feed.")
