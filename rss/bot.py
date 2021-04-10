@@ -88,14 +88,20 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> Awaitable[EventID]:
-        return self.client.send_markdown(sub.room_id, sub.notification_template.safe_substitute({
+    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID:
+        message = sub.notification_template.safe_substitute({
             "feed_url": feed.url,
             "feed_title": feed.title,
             "feed_subtitle": feed.subtitle,
             "feed_link": feed.link,
             **entry._asdict(),
-        }), msgtype=MessageType.NOTICE if sub.send_notice else MessageType.TEXT, allow_html=True)
+        })
+        msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
+        try:
+            return await self.client.send_markdown(sub.room_id, message, msgtype=msgtype,
+                                                   allow_html=True)
+        except Exception as e:
+            self.log.warning(f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}")
 
     async def _broadcast(self, feed: Feed, entry: Entry, subscriptions: List[Subscription]) -> None:
         spam_sleep = self.config["spam_sleep"]
