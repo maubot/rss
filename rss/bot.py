@@ -18,7 +18,6 @@ from datetime import datetime
 from time import mktime, time
 from string import Template
 import asyncio
-import time
 
 import aiohttp
 import hashlib
@@ -112,7 +111,7 @@ class RSSBot(Plugin):
         subs = self.db.get_feeds()
         if not subs:
             return
-        now = int(time.time())
+        now = int(time())
         tasks = [self.try_parse_feed(feed=feed) for feed in subs if feed.next_retry < now]
         feed: Feed
         entries: Iterable[Entry]
@@ -122,7 +121,7 @@ class RSSBot(Plugin):
                 error_count = feed.error_count + 1
                 next_retry_delay = self.config["update_interval"] * 60 * error_count
                 next_retry_delay = min(next_retry_delay, self.config["max_backoff"] * 60)
-                next_retry = int(time.time() + next_retry_delay)
+                next_retry = int(time() + next_retry_delay)
                 self.db.set_backoff(feed, error_count, next_retry)
                 continue
             elif feed.error_count > 0:
