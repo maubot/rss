@@ -345,13 +345,20 @@ class RSSBot(Plugin):
         send_type = "m.notice" if setting else "m.text"
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
 
+    @staticmethod
+    def _format_subscription(feed: Feed, subscriber: str) -> str:
+        msg = (f"* {feed.id} - [{feed.title}]({feed.url}) "
+               f"(subscribed by [{subscriber}](https://matrix.to/#/{subscriber}))")
+        if feed.error_count > 1:
+            msg += f"  \n  ⚠️ The last {feed.error_count} attempts to fetch the feed have failed!"
+        return msg
+
     @rss.subcommand("subscriptions", aliases=("ls", "list", "subs"),
                     help="List the subscriptions in the current room.")
     async def command_subscriptions(self, evt: MessageEvent) -> None:
         subscriptions = self.db.get_feeds_by_room(evt.room_id)
         await evt.reply("**Subscriptions in this room:**\n\n"
-                        + "\n".join(f"* {feed.id} - [{feed.title}]({feed.url}) (subscribed by "
-                                    f"[{subscriber}](https://matrix.to/#/{subscriber}))"
+                        + "\n".join(self._format_subscription(feed, subscriber)
                                     for feed, subscriber in subscriptions))
 
     @event.on(EventType.ROOM_TOMBSTONE)
