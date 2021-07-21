@@ -104,6 +104,7 @@ class RSSBot(Plugin):
             self.log.warning(f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}")
 
     async def _broadcast(self, feed: Feed, entry: Entry, subscriptions: List[Subscription]) -> None:
+        self.log.debug(f"Broadcasting {entry.id} of {feed.id}")
         spam_sleep = self.config["spam_sleep"]
         tasks = [self._send(feed, entry, sub) for sub in subscriptions]
         if spam_sleep >= 0:
@@ -128,9 +129,11 @@ class RSSBot(Plugin):
                 next_retry_delay = self.config["update_interval"] * 60 * error_count
                 next_retry_delay = min(next_retry_delay, self.config["max_backoff"] * 60)
                 next_retry = int(time() + next_retry_delay)
+                self.log.debug(f"Setting backoff of {feed.id} to {error_count} / {next_retry}")
                 self.db.set_backoff(feed, error_count, next_retry)
                 continue
             elif feed.error_count > 0:
+                self.log.debug(f"Resetting backoff of {feed.id}")
                 self.db.set_backoff(feed, error_count=0, next_retry=0)
             try:
                 new_entries = {entry.id: entry for entry in entries}
