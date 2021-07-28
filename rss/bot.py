@@ -124,6 +124,8 @@ class RSSBot(Plugin):
         entries: Iterable[Entry]
         for res in asyncio.as_completed(tasks):
             feed, entries = await res
+            self.log.trace(f"Fetching {feed.id} (backoff: {feed.error_count} / {feed.next_retry}) "
+                           f"success: {bool(entries)}")
             if not entries:
                 error_count = feed.error_count + 1
                 next_retry_delay = self.config["update_interval"] * 60 * error_count
@@ -142,6 +144,7 @@ class RSSBot(Plugin):
                 continue
             for old_entry in self.db.get_entries(feed.id):
                 new_entries.pop(old_entry.id, None)
+            self.log.trace(f"Feed {feed.id} had {len(new_entries)} new entries")
             self.db.add_entries(new_entries.values())
             for entry in new_entries.values():
                 await self._broadcast(feed, entry, feed.subscriptions)
@@ -159,6 +162,8 @@ class RSSBot(Plugin):
 
     async def try_parse_feed(self, feed: Optional[Feed] = None) -> Tuple[Feed, Iterable[Entry]]:
         try:
+            self.log.trace(f"Trying to fetch {feed.id} / {feed.url} "
+                           f"(backoff: {feed.error_count} / {feed.next_retry})")
             return await self.parse_feed(feed=feed)
         except Exception as e:
             self.log.warning(f"Failed to parse feed {feed.id} / {feed.url}: {e}")
@@ -190,7 +195,8 @@ class RSSBot(Plugin):
             raise ValueError("Feed is not a valid JSON feed (items is not a list)")
         feed = Feed(id=feed.id, title=content["title"], subtitle=content.get("subtitle", ""),
                     url=feed.url, link=content.get("home_page_url", ""),
-                    next_retry=0, error_count=0, subscriptions=feed.subscriptions)
+                    next_retry=feed.next_retry, error_count=feed.error_count,
+                    subscriptions=feed.subscriptions)
         return feed, (cls._parse_json_entry(feed.id, entry) for entry in content["items"])
 
     @classmethod
@@ -226,7 +232,8 @@ class RSSBot(Plugin):
         feed_data = parsed_data.get("feed", {})
         feed = Feed(id=feed.id, url=feed.url, title=feed_data.get("title", feed.url),
                     subtitle=feed_data.get("description", ""), link=feed_data.get("link", ""),
-                    error_count=0, next_retry=0, subscriptions=feed.subscriptions)
+                    error_count=feed.error_count, next_retry=feed.next_retry,
+                    subscriptions=feed.subscriptions)
         return feed, (cls._parse_rss_entry(feed.id, entry) for entry in parsed_data.entries)
 
     @classmethod
