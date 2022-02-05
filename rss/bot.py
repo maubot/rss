@@ -41,6 +41,7 @@ class Config(BaseProxyConfig):
         helper.copy("spam_sleep")
         helper.copy("command_prefix")
         helper.copy("admins")
+        helper.copy("notification_template")
 
 
 class BoolArgument(command.Argument):
@@ -71,7 +72,7 @@ class RSSBot(Plugin):
     async def start(self) -> None:
         await super().start()
         self.config.load_and_update()
-        self.db = Database(self.database)
+        self.db = Database(self.database, self.config)
         self.http = self.client.api.session
         self.power_level_cache = {}
         self.poll_task = asyncio.ensure_future(self.poll_feeds(), loop=self.loop)

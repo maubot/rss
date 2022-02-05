@@ -11,3 +11,5 @@ command_prefix: "rss"
 # Users who can bypass room permission checks
 admins:
 - "@user:example.com"
+# default post notification template for new subscriptions
+notification_template: "New post in $feed_title: [$title]($link)"

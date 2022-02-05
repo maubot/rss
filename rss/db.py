@@ -23,6 +23,7 @@ from sqlalchemy import (Column, String, Integer, DateTime, Text, Boolean, Foreig
 from sqlalchemy.engine.base import Engine
 
 from mautrix.types import UserID, RoomID
+from mautrix.util.config import BaseProxyConfig
 
 Subscription = NamedTuple("Subscription", feed_id=int, room_id=RoomID, user_id=UserID,
                           notification_template=Template, send_notice=bool)
@@ -38,8 +39,9 @@ class Database:
     entry: Table
     version: Table
 
-    def __init__(self, db: Engine) -> None:
+    def __init__(self, db: Engine, config: BaseProxyConfig) -> None:
         self.db = db
+        self.config = config
         metadata = MetaData()
         self.feed = Table("feed", metadata,
                           Column("id", Integer, primary_key=True, autoincrement=True),
@@ -213,7 +215,7 @@ class Database:
     def subscribe(self, feed_id: int, room_id: RoomID, user_id: UserID) -> None:
         self.db.execute(self.subscription.insert().values(
             feed_id=feed_id, room_id=room_id, user_id=user_id,
-            notification_template="New post in $feed_title: [$title]($link)"))
+            notification_template = self.config["notification_template"]))
 
     def unsubscribe(self, feed_id: int, room_id: RoomID) -> None:
         tbl = self.subscription
