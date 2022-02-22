@@ -122,6 +122,7 @@ class RSSBot(Plugin):
         tasks = [self.try_parse_feed(feed=feed) for feed in subs if feed.next_retry < now]
         feed: Feed
         entries: Iterable[Entry]
+        self.log.info(f"Polling {len(tasks)} feeds")
         for res in asyncio.as_completed(tasks):
             feed, entries = await res
             self.log.trace(f"Fetching {feed.id} (backoff: {feed.error_count} / {feed.next_retry}) "
@@ -146,8 +147,10 @@ class RSSBot(Plugin):
                 new_entries.pop(old_entry.id, None)
             self.log.trace(f"Feed {feed.id} had {len(new_entries)} new entries")
             self.db.add_entries(new_entries.values())
-            for entry in new_entries.values():
+            # TODO sort properly?
+            for entry in reversed(new_entries.values()):
                 await self._broadcast(feed, entry, feed.subscriptions)
+        self.log.info(f"Finished polling {len(tasks)} feeds")
 
     async def _poll_feeds(self) -> None:
         self.log.debug("Polling started")
