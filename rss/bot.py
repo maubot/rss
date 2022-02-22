@@ -209,7 +209,7 @@ class RSSBot(Plugin):
         summary = (entry.get("summary")
                    or entry.get("content_html")
                    or entry.get("content_text")
-                   or "")
+                   or "").strip()
         id = str(entry["id"])
         link = entry.get("url") or id
         return Entry(feed_id=feed_id, id=id, date=date, title=title, summary=summary, link=link)
@@ -247,7 +247,7 @@ class RSSBot(Plugin):
                              ).hexdigest()),
             date=cls._parse_rss_date(entry),
             title=getattr(entry, "title", ""),
-            summary=getattr(entry, "description", ""),
+            summary=getattr(entry, "description", "").strip(),
             link=getattr(entry, "link", ""),
         )
 
