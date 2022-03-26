@@ -1,4 +1,4 @@
-maubot: 0.1.0
+maubot: 0.3.0
 id: xyz.maubot.rss
 version: 0.2.6
 license: AGPL-3.0-or-later
@@ -10,3 +10,4 @@ extra_files:
 dependencies:
 - feedparser>=5.1
 database: true
+database_type: asyncpg
