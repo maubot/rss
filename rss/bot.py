@@ -446,6 +446,9 @@ class RSSBot(Plugin):
     )
     async def command_subscriptions(self, evt: MessageEvent) -> None:
         subscriptions = await self.dbm.get_feeds_by_room(evt.room_id)
+        if len(subscriptions) == 0:
+            await evt.reply("There are no RSS subscriptions in this room")
+            return
         await evt.reply(
             "**Subscriptions in this room:**\n\n"
             + "\n".join(
