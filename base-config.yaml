@@ -8,6 +8,8 @@ spam_sleep: 2
 # The prefix for all commands
 # It has to be prefixed with ! in matrix to be recognised
 command_prefix: "rss"
+# Default post notification template for new subscriptions
+notification_template: "New post in $feed_title: [$title]($link)"
 # Users who can bypass room permission checks
 admins:
 - "@user:example.com"

@@ -51,6 +51,7 @@ class Config(BaseProxyConfig):
         helper.copy("max_backoff")
         helper.copy("spam_sleep")
         helper.copy("command_prefix")
+        helper.copy("notification_template")
         helper.copy("admins")
 
 
@@ -360,7 +361,9 @@ class RSSBot(Plugin):
             )
             await evt.reply(f"{subscriber} had already subscribed this room to {feed_info}")
         else:
-            await self.dbm.subscribe(feed.id, evt.room_id, evt.sender)
+            await self.dbm.subscribe(
+                feed.id, evt.room_id, evt.sender, self.config["notification_template"]
+            )
             await evt.reply(f"Subscribed to {feed_info}")
 
     @rss.subcommand(
