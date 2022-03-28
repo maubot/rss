@@ -50,7 +50,7 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
         )"""
     )
     await conn.execute(
-        """CREATE TABLE entry (
+        """CREATE TABLE IF NOT EXISTS entry (
             feed_id INTEGER,
             id      TEXT,
             date    timestamp NOT NULL,
@@ -59,7 +59,7 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
             link    TEXT NOT NULL,
             PRIMARY KEY (feed_id, id),
             FOREIGN KEY (feed_id) REFERENCES feed (id)
-        );"""
+        )"""
     )
 
 
