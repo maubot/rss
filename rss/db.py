@@ -180,7 +180,7 @@ class DBManager:
     async def create_feed(self, info: Feed) -> Feed:
         q = (
             "INSERT INTO feed (url, title, subtitle, link, next_retry) "
-            "VALUES ($1, $2, $3, $4, $5) RETURNING (id)"
+            "VALUES ($1, $2, $3, $4, $5)"
         )
         info.id = await self.db.fetchval(
             q, info.url, info.title, info.subtitle, info.link, info.next_retry
