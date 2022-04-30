@@ -23,7 +23,13 @@ from attr import dataclass
 import attr
 
 from mautrix.types import RoomID, UserID
-from mautrix.util.async_db import Database, Scheme, SQLiteCursor
+from mautrix.util.async_db import Database, Scheme
+
+# TODO make this import unconditional after updating mautrix-python
+try:
+    from mautrix.util.async_db import SQLiteCursor
+except ImportError:
+    SQLiteCursor = None
 
 
 @dataclass
@@ -193,7 +199,8 @@ class DBManager:
                 info.link,
                 info.next_retry,
             )
-            assert isinstance(cur, SQLiteCursor)
+            if SQLiteCursor is not None:
+                assert isinstance(cur, SQLiteCursor)
             info.id = cur.lastrowid
         else:
             info.id = await self.db.fetchval(
