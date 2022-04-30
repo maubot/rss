@@ -90,7 +90,7 @@ class RSSBot(Plugin):
         self.dbm = DBManager(self.database)
         self.http = self.client.api.session
         self.power_level_cache = {}
-        self.poll_task = asyncio.ensure_future(self.poll_feeds(), loop=self.loop)
+        self.poll_task = asyncio.create_task(self.poll_feeds())
 
     async def stop(self) -> None:
         await super().stop()
@@ -131,7 +131,7 @@ class RSSBot(Plugin):
         if spam_sleep >= 0:
             for task in tasks:
                 await task
-                await asyncio.sleep(spam_sleep, loop=self.loop)
+                await asyncio.sleep(spam_sleep)
         else:
             await asyncio.gather(*tasks)
 
@@ -185,7 +185,7 @@ class RSSBot(Plugin):
                 self.log.debug("Polling stopped")
             except Exception:
                 self.log.exception("Error while polling feeds")
-            await asyncio.sleep(self.config["update_interval"] * 60, loop=self.loop)
+            await asyncio.sleep(self.config["update_interval"] * 60)
 
     async def try_parse_feed(self, feed: Feed | None = None) -> tuple[Feed, list[Entry]]:
         try:
