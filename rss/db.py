@@ -23,7 +23,7 @@ from attr import dataclass
 import attr
 
 from mautrix.types import RoomID, UserID
-from mautrix.util.async_db import Database, Scheme
+from mautrix.util.async_db import Database, Scheme, SQLiteCursor
 
 
 @dataclass
@@ -182,9 +182,23 @@ class DBManager:
             "INSERT INTO feed (url, title, subtitle, link, next_retry) "
             "VALUES ($1, $2, $3, $4, $5) RETURNING (id)"
         )
-        info.id = await self.db.fetchval(
-            q, info.url, info.title, info.subtitle, info.link, info.next_retry
-        )
+        # SQLite only gained RETURNING support in v3.35 (2021-03-12)
+        # TODO remove this special case in a couple of years
+        if self.db.scheme == Scheme.SQLITE:
+            cur = await self.db.execute(
+                q.replace(" RETURNING (id)", ""),
+                info.url,
+                info.title,
+                info.subtitle,
+                info.link,
+                info.next_retry,
+            )
+            assert isinstance(cur, SQLiteCursor)
+            info.id = cur.lastrowid
+        else:
+            info.id = await self.db.fetchval(
+                q, info.url, info.title, info.subtitle, info.link, info.next_retry
+            )
         return info
 
     async def set_backoff(self, info: Feed, error_count: int, next_retry: int) -> None:
