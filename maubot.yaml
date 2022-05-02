@@ -1,6 +1,6 @@
 maubot: 0.3.0
 id: xyz.maubot.rss
-version: 0.3.0
+version: 0.3.1
 license: AGPL-3.0-or-later
 modules:
 - rss
