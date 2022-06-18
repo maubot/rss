@@ -26,7 +26,7 @@ import aiohttp
 import attr
 import feedparser
 
-from maubot import MessageEvent, Plugin
+from maubot import MessageEvent, Plugin, __version__ as maubot_version
 from maubot.handlers import command, event
 from mautrix.types import (
     EventID,
@@ -198,6 +198,12 @@ class RSSBot(Plugin):
             self.log.warning(f"Failed to parse feed {feed.id} / {feed.url}: {e}")
             return feed, []
 
+    @property
+    def _feed_get_headers(self) -> dict[str, str]:
+        return {
+            "User-Agent": f"maubot/{maubot_version} +https://github.com/maubot/rss",
+        }
+
     async def parse_feed(
         self, *, feed: Feed | None = None, url: str | None = None
     ) -> tuple[Feed, list[Entry]]:
@@ -207,7 +213,7 @@ class RSSBot(Plugin):
             feed = Feed(id=-1, url=url, title="", subtitle="", link="")
         elif url is not None:
             raise ValueError("Only one of feed or url must be set")
-        resp = await self.http.get(feed.url)
+        resp = await self.http.get(feed.url, headers=self._feed_get_headers)
         ct = resp.headers["Content-Type"].split(";")[0].strip()
         if ct == "application/json" or ct == "application/feed+json":
             return await self._parse_json(feed, resp)
