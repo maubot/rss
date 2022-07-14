@@ -279,12 +279,12 @@ class RSSBot(Plugin):
             feed_id=feed_id,
             id=(
                 getattr(entry, "id", None)
+                or getattr(entry, "link", None)
                 or hashlib.sha1(
                     " ".join(
                         [
                             getattr(entry, "title", ""),
                             getattr(entry, "description", ""),
-                            getattr(entry, "link", ""),
                         ]
                     ).encode("utf-8")
                 ).hexdigest()
