@@ -136,11 +136,11 @@ class RSSBot(Plugin):
             await asyncio.gather(*tasks)
 
     async def _poll_once(self) -> None:
-        subs = await self.dbm.get_feeds()
-        if not subs:
+        feeds = await self.dbm.get_feeds()
+        if not feeds:
             return
         now = int(time())
-        tasks = [self.try_parse_feed(feed=feed) for feed in subs if feed.next_retry < now]
+        tasks = [self.try_parse_feed(feed=feed) for feed in feeds.values() if feed.next_retry < now]
         feed: Feed
         entries: Iterable[Entry]
         self.log.info(f"Polling {len(tasks)} feeds")
@@ -150,6 +150,12 @@ class RSSBot(Plugin):
                 f"Fetching {feed.id} (backoff: {feed.error_count} / {feed.next_retry}) "
                 f"success: {bool(entries)}"
             )
+            if feed.title != feeds[feed.id].title:
+                self.log.info(f"Feed {feed.id} title changed from {feeds[feed.id].title} to {feed.title}")
+                self.dbm.set_title(feed, feed.title)
+            if feed.subtitle != feeds[feed.id].subtitle:
+                self.log.info(f"Feed {feed.id} subtitle changed from {feeds[feed.id].subtitle} to {feed.subtitle}")
+                self.dbm.set_subtitle(feed, feed.subtitle)
             if not entries:
                 error_count = feed.error_count + 1
                 next_retry_delay = self.config["update_interval"] * 60 * error_count

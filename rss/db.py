@@ -118,7 +118,7 @@ class DBManager:
     def __init__(self, db: Database) -> None:
         self.db = db
 
-    async def get_feeds(self) -> list[Feed]:
+    async def get_feeds(self) -> dict[int, Feed]:
         q = """
         SELECT id, url, title, subtitle, link, next_retry, error_count,
                room_id, user_id, notification_template, send_notice
@@ -132,7 +132,7 @@ class DBManager:
             except KeyError:
                 feed = feeds[row["id"]] = Feed.from_row(row)
             feed.subscriptions.append(Subscription.from_row(row))
-        return list(feeds.values())
+        return feeds
 
     async def get_feeds_by_room(self, room_id: RoomID) -> list[tuple[Feed, UserID]]:
         q = """
@@ -211,6 +211,14 @@ class DBManager:
     async def set_backoff(self, info: Feed, error_count: int, next_retry: int) -> None:
         q = "UPDATE feed SET error_count = $2, next_retry = $3 WHERE id = $1"
         await self.db.execute(q, info.id, error_count, next_retry)
+
+    async def set_title(self, info: Feed, new_title: str) -> None:
+        q = "UPDATE feed SET title = $2 WHERE id = $1"
+        await self.db.execute(q, info.id, new_title)
+
+    async def set_subtitle(self, info: Feed, new_subtitle: str) -> None:
+        q = "UPDATE feed SET subtitle = $2 WHERE id = $1"
+        await self.db.execute(q, info.id, new_subtitle)
 
     async def subscribe(
         self,
