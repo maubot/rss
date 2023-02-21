@@ -405,7 +405,9 @@ class RSSBot(Plugin):
             await evt.reply(
                 '<p>Current template in this room:</p><pre><code language="markdown">'
                 f"{html.escape(sub.notification_template.template)}"
-                "</code></pre>", allow_html=True, markdown=False,
+                "</code></pre>",
+                allow_html=True,
+                markdown=False,
             )
             return
         await self.dbm.update_template(feed.id, evt.room_id, template)
