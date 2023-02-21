@@ -21,6 +21,7 @@ from string import Template
 from time import mktime, time
 import asyncio
 import hashlib
+import html
 
 import aiohttp
 import attr
@@ -392,13 +393,20 @@ class RSSBot(Plugin):
         help="Change the notification template for a subscription in this room",
     )
     @command.argument("feed_id", "feed ID", parser=int)
-    @command.argument("template", "new template", pass_raw=True)
+    @command.argument("template", "new template", pass_raw=True, required=False)
     async def command_template(self, evt: MessageEvent, feed_id: int, template: str) -> None:
         if not await self.can_manage(evt):
             return
         sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
         if not sub:
             await evt.reply("This room is not subscribed to that feed")
+            return
+        if not template:
+            await evt.reply(
+                '<p>Current template in this room:</p><pre><code language="markdown">'
+                f"{html.escape(sub.notification_template.template)}"
+                "</code></pre>", allow_html=True, markdown=False,
+            )
             return
         await self.dbm.update_template(feed.id, evt.room_id, template)
         sub = Subscription(
