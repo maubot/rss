@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from typing import Any, Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 from string import Template
 from time import mktime, time
 import asyncio
@@ -76,6 +76,7 @@ class RSSBot(Plugin):
     poll_task: asyncio.Future
     http: aiohttp.ClientSession
     power_level_cache: dict[RoomID, tuple[int, PowerLevelStateEventContent]]
+    next_run: datetime
 
     @classmethod
     def get_config_class(cls) -> type[BaseProxyConfig]:
@@ -186,6 +187,7 @@ class RSSBot(Plugin):
                 self.log.debug("Polling stopped")
             except Exception:
                 self.log.exception("Error while polling feeds")
+            self.next_run = datetime.now() + timedelta(seconds=(self.config["update_interval"]*60))
             await asyncio.sleep(self.config["update_interval"] * 60)
 
     async def try_parse_feed(self, feed: Feed | None = None) -> tuple[Feed, list[Entry]]:
@@ -341,6 +343,13 @@ class RSSBot(Plugin):
     )
     async def rss(self) -> None:
         pass
+
+    @rss.subcommand("nextrun", aliases=("n",), help="Get latest item for each feed.")
+    async def next_run(self, evt: MessageEvent) -> None:
+        await evt.reply(f"""Next polling in {self.next_run - datetime.now()}""")
+        # Next polling @  {self.next_run}
+        # Now:            {datetime.now()}
+        # Delta:          {self.next_run - datetime.now()}
 
     @rss.subcommand("subscribe", aliases=("s", "sub"), help="Subscribe this room to a feed.")
     @command.argument("url", "feed URL", pass_raw=True)
