@@ -17,7 +17,6 @@ from mautrix.util.async_db import Connection, Scheme, UpgradeTable
 
 upgrade_table = UpgradeTable()
 
-
 @upgrade_table.register(description="Latest revision", upgrades_to=3)
 async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
     gen = "GENERATED ALWAYS AS IDENTITY" if scheme != Scheme.SQLITE else ""
@@ -72,3 +71,8 @@ async def upgrade_v2(conn: Connection) -> None:
 async def upgrade_v3(conn: Connection) -> None:
     await conn.execute("ALTER TABLE feed ADD COLUMN next_retry BIGINT DEFAULT 0")
     await conn.execute("ALTER TABLE feed ADD COLUMN error_count BIGINT DEFAULT 0")
+
+
+@upgrade_table.register(description="Add html field to entry")
+async def upgrade_v4(conn: Connection) -> None:
+    await conn.execute("ALTER TABLE entry ADD COLUMN html TEXT")
