@@ -445,6 +445,20 @@ class RSSBot(Plugin):
         send_type = "m.notice" if setting else "m.text"
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
 
+    @rss.subcommand(
+        "postall", aliases=("p",), help="Post all previously seen entries from the given feed to this room"
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    async def command_postall(self, evt: MessageEvent, feed_id: int) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        for entry in await self.dbm.get_entries(feed.id):
+            await self._broadcast(feed, entry, [sub])
+
     @staticmethod
     def _format_subscription(feed: Feed, subscriber: str) -> str:
         msg = (
