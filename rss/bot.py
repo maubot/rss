@@ -22,6 +22,7 @@ from time import mktime, time
 import asyncio
 import hashlib
 import html
+import re
 
 import aiohttp
 import attr
@@ -117,6 +118,8 @@ class RSSBot(Plugin):
         )
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
         try:
+            m = re.search(r"<video.*src=[\"']([^\"']*)", entry.summary).group(1)
+            await self.client.send_markdown(sub.room_id, entry.summary + str(m))
             return await self.client.send_markdown(
                 sub.room_id, message, msgtype=msgtype, allow_html=True
             )
