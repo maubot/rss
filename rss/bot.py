@@ -296,7 +296,7 @@ class RSSBot(Plugin):
             title=getattr(entry, "title", ""),
             summary=getattr(entry, "description", "").strip(),
             link=getattr(entry, "link", ""),
-            content_encoded=entry["content"][0]["value"].strip(),
+            content=entry["content"][0]["value"].strip(),
         )
 
     @staticmethod
@@ -429,7 +429,7 @@ class RSSBot(Plugin):
             title="Sample entry",
             summary="This is a sample entry to demonstrate your new template",
             link="http://example.com",
-            content_encoded="<b>Sample encoded content</b>"
+            content="<b>Sample formatted content</b>"
         )
         await evt.reply(f"Template for feed ID {feed.id} updated. Sample notification:")
         await self._send(feed, sample_entry, sub)
