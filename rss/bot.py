@@ -66,6 +66,8 @@ class BoolArgument(command.Argument):
             res = False
         elif part in ("t", "true", "y", "yes", "1"):
             res = True
+        elif self.required == False:
+            res = None
         else:
             raise ValueError("invalid boolean")
         return val[len(part) :], res
