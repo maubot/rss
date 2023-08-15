@@ -73,6 +73,7 @@ async def upgrade_v3(conn: Connection) -> None:
     await conn.execute("ALTER TABLE feed ADD COLUMN error_count BIGINT DEFAULT 0")
 
 
-@upgrade_table.register(description="Add html field to entry")
+@upgrade_table.register(description="Add support for encoded content")
 async def upgrade_v4(conn: Connection) -> None:
-    await conn.execute("ALTER TABLE entry ADD COLUMN html TEXT")
+    await conn.execute("ALTER TABLE entry ADD COLUMN content_encoded TEXT")
+    await conn.execute("ALTER TABLE subscription ADD COLUMN send_encoded BOOLEAN DEFAULT false")

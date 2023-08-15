@@ -39,6 +39,7 @@ class Subscription:
     user_id: UserID
     notification_template: Template
     send_notice: bool
+    send_encoded: bool
 
     @classmethod
     def from_row(cls, row: Record | None) -> Subscription | None:
@@ -50,6 +51,7 @@ class Subscription:
         if not room_id or not user_id:
             return None
         send_notice = bool(row["send_notice"])
+        send_encoded = bool(row["send_encoded"])
         tpl = Template(row["notification_template"])
         return cls(
             feed_id=feed_id,
@@ -57,6 +59,7 @@ class Subscription:
             user_id=user_id,
             notification_template=tpl,
             send_notice=send_notice,
+            send_encoded=send_encoded
         )
 
 
@@ -81,6 +84,7 @@ class Feed:
         data.pop("room_id", None)
         data.pop("user_id", None)
         data.pop("send_notice", None)
+        data.pop("send_encoded", None)
         data.pop("notification_template", None)
         return cls(**data, subscriptions=[])
 
@@ -97,7 +101,7 @@ class Entry:
     title: str
     summary: str
     link: str
-    html: str
+    content_encoded: str
 
     @classmethod
     def from_row(cls, row: Record | None) -> Entry | None:
@@ -122,7 +126,8 @@ class DBManager:
     async def get_feeds(self) -> list[Feed]:
         q = """
         SELECT id, url, title, subtitle, link, next_retry, error_count,
-               room_id, user_id, notification_template, send_notice
+               room_id, user_id, notification_template, send_notice,
+               send_encoded
         FROM feed INNER JOIN subscription ON feed.id = subscription.feed_id
         """
         rows = await self.db.fetch(q)
@@ -144,7 +149,7 @@ class DBManager:
         return [(Feed.from_row(row), row["user_id"]) for row in rows]
 
     async def get_entries(self, feed_id: int) -> list[Entry]:
-        q = "SELECT feed_id, id, date, title, summary, link, html FROM entry WHERE feed_id = $1"
+        q = "SELECT feed_id, id, date, title, summary, link, content_encoded FROM entry WHERE feed_id = $1"
         return [Entry.from_row(row) for row in await self.db.fetch(q, feed_id)]
 
     async def add_entries(self, entries: list[Entry], override_feed_id: int | None = None) -> None:
@@ -154,13 +159,13 @@ class DBManager:
             for entry in entries:
                 entry.feed_id = override_feed_id
         records = [attr.astuple(entry) for entry in entries]
-        columns = ("feed_id", "id", "date", "title", "summary", "link", "html")
+        columns = ("feed_id", "id", "date", "title", "summary", "link", "content_encoded")
         async with self.db.acquire() as conn:
             if self.db.scheme == Scheme.POSTGRES:
                 await conn.copy_records_to_table("entry", records=records, columns=columns)
             else:
                 q = (
-                    "INSERT INTO entry (feed_id, id, date, title, summary, link, html) "
+                    "INSERT INTO entry (feed_id, id, date, title, summary, link, content_encoded) "
                     "VALUES ($1, $2, $3, $4, $5, $6)"
                 )
                 await conn.executemany(q, records)
@@ -174,7 +179,8 @@ class DBManager:
     ) -> tuple[Subscription | None, Feed | None]:
         q = """
         SELECT id, url, title, subtitle, link, next_retry, error_count,
-               room_id, user_id, notification_template, send_notice
+               room_id, user_id, notification_template, send_notice,
+               send_encoded
         FROM feed LEFT JOIN subscription ON feed.id = subscription.feed_id AND room_id = $2
         WHERE feed.id = $1
         """
@@ -220,13 +226,19 @@ class DBManager:
         user_id: UserID,
         template: str | None = None,
         send_notice: bool = True,
+        send_encoded: bool = False
     ) -> None:
         q = """
-        INSERT INTO subscription (feed_id, room_id, user_id, notification_template, send_notice)
+        INSERT INTO subscription (
+            feed_id, room_id, user_id, notification_template,
+            send_notice, send_encoded)
         VALUES ($1, $2, $3, $4, $5)
         """
         template = template or "New post in $feed_title: [$title]($link)"
-        await self.db.execute(q, feed_id, room_id, user_id, template, send_notice)
+        await self.db.execute(
+            q, feed_id, room_id, user_id, template, send_notice,
+            send_encoded
+        )
 
     async def unsubscribe(self, feed_id: int, room_id: RoomID) -> None:
         q = "DELETE FROM subscription WHERE feed_id = $1 AND room_id = $2"
@@ -239,3 +251,12 @@ class DBManager:
     async def set_send_notice(self, feed_id: int, room_id: RoomID, send_notice: bool) -> None:
         q = "UPDATE subscription SET send_notice=$3 WHERE feed_id=$1 AND room_id=$2"
         await self.db.execute(q, feed_id, room_id, send_notice)
+    
+    async def set_send_encoded(self, feed_id: int, room_id: RoomID, send_encoded: bool) -> None:
+        q = "UPDATE subscription SET send_encoded=$3 WHERE feed_id=$1 AND room_id=$2"
+        await self.db.execute(q, feed_id, room_id, send_encoded)
+    
+    async def get_send_encoded(self, feed_id: int, room_id: RoomID) -> bool:
+        q = "SELECT send_encoded FROM subscription WHERE feed_id=$1 and room_id=$2"
+        row = await self.db.fetchrow(q, feed_id, room_id)
+        return bool(row["send_encoded"])
