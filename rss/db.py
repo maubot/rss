@@ -166,7 +166,7 @@ class DBManager:
             else:
                 q = (
                     "INSERT INTO entry (feed_id, id, date, title, summary, link, content_encoded) "
-                    "VALUES ($1, $2, $3, $4, $5, $6)"
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7)"
                 )
                 await conn.executemany(q, records)
 
@@ -232,7 +232,7 @@ class DBManager:
         INSERT INTO subscription (
             feed_id, room_id, user_id, notification_template,
             send_notice, send_encoded)
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
         """
         template = template or "New post in $feed_title: [$title]($link)"
         await self.db.execute(
