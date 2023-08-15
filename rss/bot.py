@@ -420,7 +420,6 @@ class RSSBot(Plugin):
             user_id=sub.user_id,
             notification_template=Template(template),
             send_notice=sub.send_notice,
-            send_encoded=sub.send_encoded,
         )
         sample_entry = Entry(
             feed_id=feed.id,
@@ -449,26 +448,6 @@ class RSSBot(Plugin):
         await self.dbm.set_send_notice(feed.id, evt.room_id, setting)
         send_type = "m.notice" if setting else "m.text"
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
-    
-    @rss.subcommand(
-        "formatted", aliases=("f","encoded"), help="Set whether or not the bot should send formatted updates when available"
-    )
-    @command.argument("feed_id", "feed ID", parser=int)
-    @BoolArgument("setting", "true/false", required=False)
-    async def command_formatted(self, evt: MessageEvent, feed_id: int, setting: bool | None = None) -> None:
-        if not await self.can_manage(evt):
-            return
-        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
-        if not sub:
-            await evt.reply("This room is not subscribed to that feed")
-            return
-        if setting is None:
-            setting = await self.dbm.get_send_encoded(feed.id, evt.room_id)
-        else:
-            await self.dbm.set_send_encoded(feed.id, evt.room_id, setting)
-        
-        send_type = "formatted" if setting else "plain text"
-        await evt.reply(f"Updates for feed ID {feed.id} will be sent as {send_type}")
 
     @rss.subcommand(
         "postall", aliases=("p",), help="Post all previously seen entries from the given feed to this room"

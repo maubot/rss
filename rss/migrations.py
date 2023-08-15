@@ -76,4 +76,3 @@ async def upgrade_v3(conn: Connection) -> None:
 @upgrade_table.register(description="Add support for encoded content")
 async def upgrade_v4(conn: Connection) -> None:
     await conn.execute("ALTER TABLE entry ADD COLUMN content TEXT")
-    await conn.execute("ALTER TABLE subscription ADD COLUMN send_encoded BOOLEAN DEFAULT false")
