@@ -296,7 +296,9 @@ class RSSBot(Plugin):
             title=getattr(entry, "title", ""),
             summary=getattr(entry, "description", "").strip(),
             link=getattr(entry, "link", ""),
-            content=entry["content"][0]["value"].strip(),
+            content=entry["content"][0]["value"].strip() if hasattr(entry, "content")
+                                                            and len(entry["content"]) > 0
+                                                            and hasattr(entry["content"][0], "value") else "",
         )
 
     @staticmethod
