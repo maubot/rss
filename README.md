@@ -12,6 +12,8 @@ Basic commands:
 * `!rss template <feed ID> [new template]` - Change the post template for a
   feed in the current room. If the new template is omitted, the bot replies
   with the current template.
+* `!rss postall <feed ID>` - Post all entries in the specified feed to the
+  current room
 
 ### Templates
 The default template is `New post in $feed_title: [$title]($link)`.
