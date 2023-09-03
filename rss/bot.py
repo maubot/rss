@@ -117,11 +117,16 @@ class RSSBot(Plugin):
                 **attr.asdict(entry),
             }
         )
+
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
+        msgchunks = [message[i:i + 30000] for i in range(0, len(message), 30000)]
+        self.log.debug(f"Message length: {len(message)} Content length: {len(entry.content)} Chunks: {len(msgchunks)}")
         try:
-            return await self.client.send_markdown(
-                sub.room_id, message, msgtype=msgtype, allow_html=True
-            )
+            for chunk in msgchunks:
+                returnval = await self.client.send_markdown(
+                    sub.room_id, chunk, msgtype=msgtype, allow_html=True
+                )
+            return returnval
         except Exception as e:
             self.log.warning(f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}")
 
