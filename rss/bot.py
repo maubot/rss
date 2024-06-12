@@ -23,6 +23,7 @@ import asyncio
 import hashlib
 import html
 import io
+import re
 
 import aiohttp
 import attr
@@ -106,7 +107,12 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID:
+    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID | None:
+        title_exclude_filter = sub.title_exclude_filter
+        if title_exclude_filter:
+            if re.search(title_exclude_filter, entry.title):
+                return None
+
         message = sub.notification_template.safe_substitute(
             {
                 "feed_url": feed.url,
@@ -369,6 +375,31 @@ class RSSBot(Plugin):
             await evt.reply(f"Subscribed to {feed_info}")
 
     @rss.subcommand(
+        "set-filter", aliases=("f", "filter"), help="Set title exclude filter for a specific feed."
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    @command.argument("title_exclude_filter", "title exclude filter", pass_raw=True)
+    async def set_filter(self, evt: MessageEvent, feed_id: int, title_exclude_filter: str) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        try:
+            re.compile(title_exclude_filter)
+        except re.error:
+            await evt.reply(f"Filter is not a valid regular expression")
+            return
+        await self.dbm.update_title_filter(feed.id, evt.room_id, title_exclude_filter)
+        if title_exclude_filter:
+            await evt.reply(
+                f"Feed {feed_id} will now exclude titles matching: {title_exclude_filter}"
+            )
+        else:
+            await evt.reply(f"Removed title exclude filter from feed {feed_id}")
+
+    @rss.subcommand(
         "unsubscribe", aliases=("u", "unsub"), help="Unsubscribe this room from a feed."
     )
     @command.argument("feed_id", "feed ID", parser=int)
@@ -441,11 +472,13 @@ class RSSBot(Plugin):
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
 
     @staticmethod
-    def _format_subscription(feed: Feed, subscriber: str) -> str:
+    def _format_subscription(feed: Feed, subscriber: str, title_exclude_filter: str) -> str:
         msg = (
             f"* {feed.id} - [{feed.title}]({feed.url}) "
             f"(subscribed by [{subscriber}](https://matrix.to/#/{subscriber}))"
         )
+        if title_exclude_filter:
+            msg += f" (excludes titles matching: {title_exclude_filter})"
         if feed.error_count > 1:
             msg += f"  \n  ⚠️ The last {feed.error_count} attempts to fetch the feed have failed!"
         return msg
@@ -463,7 +496,8 @@ class RSSBot(Plugin):
         await evt.reply(
             "**Subscriptions in this room:**\n\n"
             + "\n".join(
-                self._format_subscription(feed, subscriber) for feed, subscriber in subscriptions
+                self._format_subscription(feed, subscriber, title_exclude_filter)
+                for feed, subscriber, title_exclude_filter in subscriptions
             )
         )
 
