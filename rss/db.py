@@ -97,6 +97,7 @@ class Entry:
     title: str
     summary: str
     link: str
+    content: str
 
     @classmethod
     def from_row(cls, row: Record | None) -> Entry | None:
@@ -143,7 +144,7 @@ class DBManager:
         return [(Feed.from_row(row), row["user_id"]) for row in rows]
 
     async def get_entries(self, feed_id: int) -> list[Entry]:
-        q = "SELECT feed_id, id, date, title, summary, link FROM entry WHERE feed_id = $1"
+        q = "SELECT feed_id, id, date, title, summary, link, content FROM entry WHERE feed_id = $1"
         return [Entry.from_row(row) for row in await self.db.fetch(q, feed_id)]
 
     async def add_entries(self, entries: list[Entry], override_feed_id: int | None = None) -> None:
@@ -153,14 +154,14 @@ class DBManager:
             for entry in entries:
                 entry.feed_id = override_feed_id
         records = [attr.astuple(entry) for entry in entries]
-        columns = ("feed_id", "id", "date", "title", "summary", "link")
+        columns = ("feed_id", "id", "date", "title", "summary", "link", "content")
         async with self.db.acquire() as conn:
             if self.db.scheme == Scheme.POSTGRES:
                 await conn.copy_records_to_table("entry", records=records, columns=columns)
             else:
                 q = (
-                    "INSERT INTO entry (feed_id, id, date, title, summary, link) "
-                    "VALUES ($1, $2, $3, $4, $5, $6)"
+                    "INSERT INTO entry (feed_id, id, date, title, summary, link, content) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7)"
                 )
                 await conn.executemany(q, records)
 
@@ -218,14 +219,18 @@ class DBManager:
         room_id: RoomID,
         user_id: UserID,
         template: str | None = None,
-        send_notice: bool = True,
+        send_notice: bool = True
     ) -> None:
         q = """
-        INSERT INTO subscription (feed_id, room_id, user_id, notification_template, send_notice)
+        INSERT INTO subscription (
+            feed_id, room_id, user_id, notification_template,
+            send_notice)
         VALUES ($1, $2, $3, $4, $5)
         """
         template = template or "New post in $feed_title: [$title]($link)"
-        await self.db.execute(q, feed_id, room_id, user_id, template, send_notice)
+        await self.db.execute(
+            q, feed_id, room_id, user_id, template, send_notice,
+        )
 
     async def unsubscribe(self, feed_id: int, room_id: RoomID) -> None:
         q = "DELETE FROM subscription WHERE feed_id = $1 AND room_id = $2"
