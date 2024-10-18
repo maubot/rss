@@ -118,14 +118,12 @@ class RSSBot(Plugin):
                 **attr.asdict(entry),
             }
         )
-        entrytext = ' '.join(attr.asdict(entry).values())
-        self.log.info(f"obtained entry text: {entrytext}")
+        entrytext = ' '.join([str(value) for value in attr.asdict(entry).values()])
         
         for match in re.finditer(r'\{\{ ([^}]*) \}\}', message):
-            value = re.search(match.groups(0), entrytext)
-            self.log.info(f"found match: {match} with regex {match.groups(0)} matching {value} in entrytext")
-            message = message[:match.span()[0]] + value + message[match.span()[1]:]
-            
+            value = re.search(re.compile(match.groups(0)[0]), entrytext)
+            message = message[:match.span()[0]] + (value.group(0) if value is not None else "") + message[match.span()[1]:]
+        
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
         msgchunks = [message[i:i + 30000] for i in range(0, len(message), 30000)]
         self.log.debug(f"Message length: {len(message)} Content length: {len(entry.content)} Chunks: {len(msgchunks)}")
