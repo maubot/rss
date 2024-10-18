@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 from datetime import datetime
 from string import Template
+import re
 from time import mktime, time
 import asyncio
 import hashlib
@@ -66,6 +67,8 @@ class BoolArgument(command.Argument):
             res = False
         elif part in ("t", "true", "y", "yes", "1"):
             res = True
+        elif self.required == False:
+            res = None
         else:
             raise ValueError("invalid boolean")
         return val[len(part) :], res
@@ -115,11 +118,21 @@ class RSSBot(Plugin):
                 **attr.asdict(entry),
             }
         )
+        entrytext = ' '.join([str(value) for value in attr.asdict(entry).values()])
+        
+        for match in re.finditer(r'\{\{ ([^}]*) \}\}', message):
+            value = re.search(re.compile(match.groups(0)[0]), entrytext)
+            message = message[:match.span()[0]] + (value.group(0) if value is not None else "") + message[match.span()[1]:]
+        
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
+        msgchunks = [message[i:i + 30000] for i in range(0, len(message), 30000)]
+        self.log.debug(f"Message length: {len(message)} Content length: {len(entry.content)} Chunks: {len(msgchunks)}")
         try:
-            return await self.client.send_markdown(
-                sub.room_id, message, msgtype=msgtype, allow_html=True
-            )
+            for chunk in msgchunks:
+                returnval = await self.client.send_markdown(
+                    sub.room_id, chunk, msgtype=msgtype, allow_html=True
+                )
+            return returnval
         except Exception as e:
             self.log.warning(f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}")
 
@@ -294,6 +307,9 @@ class RSSBot(Plugin):
             title=getattr(entry, "title", ""),
             summary=getattr(entry, "description", "").strip(),
             link=getattr(entry, "link", ""),
+            content=entry["content"][0]["value"].strip() if hasattr(entry, "content")
+                                                            and len(entry["content"]) > 0
+                                                            and hasattr(entry["content"][0], "value") else "",
         )
 
     @staticmethod
@@ -425,6 +441,7 @@ class RSSBot(Plugin):
             title="Sample entry",
             summary="This is a sample entry to demonstrate your new template",
             link="http://example.com",
+            content="<b>Sample formatted content</b>"
         )
         await evt.reply(f"Template for feed ID {feed.id} updated. Sample notification:")
         await self._send(feed, sample_entry, sub)
@@ -444,6 +461,20 @@ class RSSBot(Plugin):
         await self.dbm.set_send_notice(feed.id, evt.room_id, setting)
         send_type = "m.notice" if setting else "m.text"
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
+
+    @rss.subcommand(
+        "postall", aliases=("p",), help="Post all previously seen entries from the given feed to this room"
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    async def command_postall(self, evt: MessageEvent, feed_id: int) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        for entry in await self.dbm.get_entries(feed.id):
+            await self._broadcast(feed, entry, [sub])
 
     @staticmethod
     def _format_subscription(feed: Feed, subscriber: str) -> str:
