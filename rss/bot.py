@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 from datetime import datetime
 from string import Template
+import re
 from time import mktime, time
 import asyncio
 import hashlib
@@ -115,6 +116,14 @@ class RSSBot(Plugin):
                 **attr.asdict(entry),
             }
         )
+        entrytext = ' '.join(attr.asdict(entry).values())
+        self.log.info(f"obtained entry text: {entrytext}")
+        
+        for match in re.finditer(r'\{\{ ([^}]*) \}\}', message):
+            value = re.search(match.groups(0), entrytext)
+            self.log.info(f"found match: {match} with regex {match.groups(0)} matching {value} in entrytext")
+            message = message[:match.span()[0]] + value + message[match.span()[1]:]
+            
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
         try:
             return await self.client.send_markdown(
