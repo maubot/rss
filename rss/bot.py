@@ -22,6 +22,7 @@ from time import mktime, time
 import asyncio
 import hashlib
 import html
+import re
 
 import aiohttp
 import attr
@@ -105,7 +106,12 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID:
+    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID | None:
+        if sub.feed_filter:
+            feed_filter_regex = re.compile(sub.feed_filter)
+            if not feed_filter_regex.search(entry.title):
+                self.log.trace(f"Skipping {entry.id} to {sub.room_id}")
+                return None
         message = sub.notification_template.safe_substitute(
             {
                 "feed_url": feed.url,
@@ -446,11 +452,13 @@ class RSSBot(Plugin):
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
 
     @staticmethod
-    def _format_subscription(feed: Feed, subscriber: str) -> str:
+    def _format_subscription(feed: Feed, subscriber: str, feed_filter: str) -> str:
         msg = (
             f"* {feed.id} - [{feed.title}]({feed.url}) "
             f"(subscribed by [{subscriber}](https://matrix.to/#/{subscriber}))"
         )
+        if feed_filter:
+            msg += f" (has feed filter: `{feed_filter}`)"
         if feed.error_count > 1:
             msg += f"  \n  ⚠️ The last {feed.error_count} attempts to fetch the feed have failed!"
         return msg
@@ -468,9 +476,35 @@ class RSSBot(Plugin):
         await evt.reply(
             "**Subscriptions in this room:**\n\n"
             + "\n".join(
-                self._format_subscription(feed, subscriber) for feed, subscriber in subscriptions
+                self._format_subscription(feed, subscriber, feed_filter)
+                for feed, subscriber, feed_filter in subscriptions
             )
         )
+
+    @rss.subcommand(
+        "filter",
+        aliases=("f",),
+        help="Set a feed filter for a subscription in this room. Accepts a regular expression.",
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    @command.argument("feed_filter", "new filter", pass_raw=True, required=False)
+    async def command_filter(self, evt: MessageEvent, feed_id: int, feed_filter: str) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        try:
+            re.compile(feed_filter)
+        except re.error:
+            await evt.reply(f"Filter is not a valid regular expression")
+            return
+        await self.dbm.update_feed_filter(feed.id, evt.room_id, feed_filter)
+        if feed_filter:
+            await evt.reply(f"Filter for feed ID {feed.id} updated")
+        else:
+            await evt.reply(f"Filter for feed ID {feed.id} removed")
 
     @event.on(EventType.ROOM_TOMBSTONE)
     async def tombstone(self, evt: StateEvent) -> None:
