@@ -40,3 +40,5 @@ The filter is applied to the entry title. Here are some examples:
 * `linux|foss` - Include entry titles matching either of the words "linux" or "foss".
 * `(?i)linux|foss` - Same as before but with an inline modifier making it case-insensitive.
 * `^(?!RT).*$` - Exclude entry titles that begin with "RT" using a negative lookahead.
+
+To mitigate potential [ReDoS](https://en.wikipedia.org/wiki/ReDoS), there is a timeout applied to the regex matching. If the timeout is triggered, the bot will send a message asking you to update the regex filter.

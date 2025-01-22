@@ -19,10 +19,12 @@ from typing import Any, Iterable
 from datetime import datetime
 from string import Template
 from time import mktime, time
+from types import FrameType
 import asyncio
 import hashlib
 import html
 import re
+import signal
 
 import aiohttp
 import attr
@@ -72,6 +74,10 @@ class BoolArgument(command.Argument):
         return val[len(part) :], res
 
 
+def handle_timeout(signal: signal.Signals, frame: FrameType) -> None:
+    raise TimeoutError()
+
+
 class RSSBot(Plugin):
     dbm: DBManager
     poll_task: asyncio.Future
@@ -106,28 +112,52 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
+    def _safe_apply_filter(self, feed_filter: str, title: str, user_id: str) -> dict[str, bool]:
+        signal.signal(signal.SIGALRM, handle_timeout)
+        signal.alarm(5)
+        result = {"timeout": False}
+        try:
+            match = re.search(feed_filter, title)
+        except TimeoutError as exc:
+            self.log.exception(f"Regex timed out! User: {user_id}, filter: {feed_filter}")
+            result["timeout"] = True
+        else:
+            result["match"] = True if match else False
+        finally:
+            signal.alarm(0)
+        return result
+
     async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID | None:
+        result = {}
         if sub.feed_filter:
-            feed_filter_regex = re.compile(sub.feed_filter)
-            if not feed_filter_regex.search(entry.title):
-                self.log.trace(f"Skipping {entry.id} to {sub.room_id}")
+            result = self._safe_apply_filter(sub.feed_filter, entry.title, sub.user_id)
+            if not result["timeout"] and not result["match"]:
+                self.log.debug(f"Skipping {entry.id} to {sub.room_id}")
                 return None
-        message = sub.notification_template.safe_substitute(
-            {
-                "feed_url": feed.url,
-                "feed_title": feed.title,
-                "feed_subtitle": feed.subtitle,
-                "feed_link": feed.link,
-                **attr.asdict(entry),
-            }
-        )
+        regex_timed_out = "timeout" in result and result["timeout"]
+        if regex_timed_out:
+            message = f"⚠️ Regex timed out! Please update filter for feed ID {feed.id}."
+        else:
+            message = sub.notification_template.safe_substitute(
+                {
+                    "feed_url": feed.url,
+                    "feed_title": feed.title,
+                    "feed_subtitle": feed.subtitle,
+                    "feed_link": feed.link,
+                    **attr.asdict(entry),
+                }
+            )
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
         try:
             return await self.client.send_markdown(
                 sub.room_id, message, msgtype=msgtype, allow_html=True
             )
         except Exception as e:
-            self.log.warning(f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}")
+            if regex_timed_out:
+                warning = f"Failed to send timed out message: {e}"
+            else:
+                warning = f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}"
+            self.log.warning(warning)
 
     async def _broadcast(
         self, feed: Feed, entry: Entry, subscriptions: list[Subscription]
