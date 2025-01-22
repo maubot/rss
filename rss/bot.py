@@ -112,14 +112,14 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    def _safe_apply_filter(self, feed_filter: str, title: str, user_id: str) -> dict[str, bool]:
+    @staticmethod
+    def _safe_apply_filter(feed_filter: str, title: str) -> dict[str, bool]:
         signal.signal(signal.SIGALRM, handle_timeout)
         signal.alarm(5)
         result = {"timeout": False}
         try:
             match = re.search(feed_filter, title)
         except TimeoutError as exc:
-            self.log.exception(f"Regex timed out! User: {user_id}, filter: {feed_filter}")
             result["timeout"] = True
         else:
             result["match"] = True if match else False
@@ -130,12 +130,13 @@ class RSSBot(Plugin):
     async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID | None:
         result = {}
         if sub.feed_filter:
-            result = self._safe_apply_filter(sub.feed_filter, entry.title, sub.user_id)
+            result = self._safe_apply_filter(sub.feed_filter, entry.title)
             if not result["timeout"] and not result["match"]:
                 self.log.debug(f"Skipping {entry.id} to {sub.room_id}")
                 return None
         regex_timed_out = "timeout" in result and result["timeout"]
         if regex_timed_out:
+            self.log.warning(f"Regex timed out! User: {sub.user_id}, filter: {sub.feed_filter}")
             message = f"⚠️ Regex timed out! Please update filter for feed ID {feed.id}."
         else:
             message = sub.notification_template.safe_substitute(
