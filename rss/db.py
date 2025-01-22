@@ -39,6 +39,7 @@ class Subscription:
     user_id: UserID
     notification_template: Template
     send_notice: bool
+    feed_filter: str
 
     @classmethod
     def from_row(cls, row: Record | None) -> Subscription | None:
@@ -51,12 +52,14 @@ class Subscription:
             return None
         send_notice = bool(row["send_notice"])
         tpl = Template(row["notification_template"])
+        feed_filter = row["feed_filter"]
         return cls(
             feed_id=feed_id,
             room_id=room_id,
             user_id=user_id,
             notification_template=tpl,
             send_notice=send_notice,
+            feed_filter=feed_filter,
         )
 
 
@@ -82,6 +85,7 @@ class Feed:
         data.pop("user_id", None)
         data.pop("send_notice", None)
         data.pop("notification_template", None)
+        data.pop("feed_filter", None)
         return cls(**data, subscriptions=[])
 
 
@@ -121,7 +125,7 @@ class DBManager:
     async def get_feeds(self) -> list[Feed]:
         q = """
         SELECT id, url, title, subtitle, link, next_retry, error_count,
-               room_id, user_id, notification_template, send_notice
+               room_id, user_id, notification_template, send_notice, feed_filter
         FROM feed INNER JOIN subscription ON feed.id = subscription.feed_id
         """
         rows = await self.db.fetch(q)
@@ -134,13 +138,13 @@ class DBManager:
             feed.subscriptions.append(Subscription.from_row(row))
         return list(feeds.values())
 
-    async def get_feeds_by_room(self, room_id: RoomID) -> list[tuple[Feed, UserID]]:
+    async def get_feeds_by_room(self, room_id: RoomID) -> list[tuple[Feed, UserID, str]]:
         q = """
-        SELECT id, url, title, subtitle, link, next_retry, error_count, user_id FROM feed
+        SELECT id, url, title, subtitle, link, next_retry, error_count, user_id, feed_filter FROM feed
         INNER JOIN subscription ON feed.id = subscription.feed_id AND subscription.room_id = $1
         """
         rows = await self.db.fetch(q, room_id)
-        return [(Feed.from_row(row), row["user_id"]) for row in rows]
+        return [(Feed.from_row(row), row["user_id"], row["feed_filter"]) for row in rows]
 
     async def get_entries(self, feed_id: int) -> list[Entry]:
         q = "SELECT feed_id, id, date, title, summary, link FROM entry WHERE feed_id = $1"
@@ -173,7 +177,7 @@ class DBManager:
     ) -> tuple[Subscription | None, Feed | None]:
         q = """
         SELECT id, url, title, subtitle, link, next_retry, error_count,
-               room_id, user_id, notification_template, send_notice
+               room_id, user_id, notification_template, send_notice, feed_filter
         FROM feed LEFT JOIN subscription ON feed.id = subscription.feed_id AND room_id = $2
         WHERE feed.id = $1
         """
@@ -238,3 +242,7 @@ class DBManager:
     async def set_send_notice(self, feed_id: int, room_id: RoomID, send_notice: bool) -> None:
         q = "UPDATE subscription SET send_notice=$3 WHERE feed_id=$1 AND room_id=$2"
         await self.db.execute(q, feed_id, room_id, send_notice)
+
+    async def update_feed_filter(self, feed_id: int, room_id: RoomID, feed_filter: str) -> None:
+        q = "UPDATE subscription SET feed_filter=$3 WHERE feed_id=$1 AND room_id=$2"
+        await self.db.execute(q, feed_id, room_id, feed_filter)

@@ -19,9 +19,12 @@ from typing import Any, Iterable
 from datetime import datetime
 from string import Template
 from time import mktime, time
+from types import FrameType
 import asyncio
 import hashlib
 import html
+import re
+import signal
 
 import aiohttp
 import attr
@@ -71,6 +74,10 @@ class BoolArgument(command.Argument):
         return val[len(part) :], res
 
 
+def handle_timeout(signal: signal.Signals, frame: FrameType) -> None:
+    raise TimeoutError()
+
+
 class RSSBot(Plugin):
     dbm: DBManager
     poll_task: asyncio.Future
@@ -105,23 +112,53 @@ class RSSBot(Plugin):
         except Exception:
             self.log.exception("Fatal error while polling feeds")
 
-    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID:
-        message = sub.notification_template.safe_substitute(
-            {
-                "feed_url": feed.url,
-                "feed_title": feed.title,
-                "feed_subtitle": feed.subtitle,
-                "feed_link": feed.link,
-                **attr.asdict(entry),
-            }
-        )
+    @staticmethod
+    def _safe_apply_filter(feed_filter: str, title: str) -> dict[str, bool]:
+        signal.signal(signal.SIGALRM, handle_timeout)
+        signal.alarm(5)
+        result = {"timeout": False}
+        try:
+            match = re.search(feed_filter, title)
+        except TimeoutError as exc:
+            result["timeout"] = True
+        else:
+            result["match"] = True if match else False
+        finally:
+            signal.alarm(0)
+        return result
+
+    async def _send(self, feed: Feed, entry: Entry, sub: Subscription) -> EventID | None:
+        result = {}
+        if sub.feed_filter:
+            result = self._safe_apply_filter(sub.feed_filter, entry.title)
+            if not result["timeout"] and not result["match"]:
+                self.log.debug(f"Skipping {entry.id} to {sub.room_id}")
+                return None
+        regex_timed_out = "timeout" in result and result["timeout"]
+        if regex_timed_out:
+            self.log.warning(f"Regex timed out! User: {sub.user_id}, filter: {sub.feed_filter}")
+            message = f"⚠️ Regex timed out! Please update filter for feed ID {feed.id}."
+        else:
+            message = sub.notification_template.safe_substitute(
+                {
+                    "feed_url": feed.url,
+                    "feed_title": feed.title,
+                    "feed_subtitle": feed.subtitle,
+                    "feed_link": feed.link,
+                    **attr.asdict(entry),
+                }
+            )
         msgtype = MessageType.NOTICE if sub.send_notice else MessageType.TEXT
         try:
             return await self.client.send_markdown(
                 sub.room_id, message, msgtype=msgtype, allow_html=True
             )
         except Exception as e:
-            self.log.warning(f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}")
+            if regex_timed_out:
+                warning = f"Failed to send timed out message: {e}"
+            else:
+                warning = f"Failed to send {entry.id} of {feed.id} to {sub.room_id}: {e}"
+            self.log.warning(warning)
 
     async def _broadcast(
         self, feed: Feed, entry: Entry, subscriptions: list[Subscription]
@@ -446,11 +483,13 @@ class RSSBot(Plugin):
         await evt.reply(f"Updates for feed ID {feed.id} will now be sent as `{send_type}`")
 
     @staticmethod
-    def _format_subscription(feed: Feed, subscriber: str) -> str:
+    def _format_subscription(feed: Feed, subscriber: str, feed_filter: str) -> str:
         msg = (
             f"* {feed.id} - [{feed.title}]({feed.url}) "
             f"(subscribed by [{subscriber}](https://matrix.to/#/{subscriber}))"
         )
+        if feed_filter:
+            msg += f" (has feed filter: `{feed_filter}`)"
         if feed.error_count > 1:
             msg += f"  \n  ⚠️ The last {feed.error_count} attempts to fetch the feed have failed!"
         return msg
@@ -468,9 +507,35 @@ class RSSBot(Plugin):
         await evt.reply(
             "**Subscriptions in this room:**\n\n"
             + "\n".join(
-                self._format_subscription(feed, subscriber) for feed, subscriber in subscriptions
+                self._format_subscription(feed, subscriber, feed_filter)
+                for feed, subscriber, feed_filter in subscriptions
             )
         )
+
+    @rss.subcommand(
+        "filter",
+        aliases=("f",),
+        help="Set a feed filter for a subscription in this room. Accepts a regular expression.",
+    )
+    @command.argument("feed_id", "feed ID", parser=int)
+    @command.argument("feed_filter", "new filter", pass_raw=True, required=False)
+    async def command_filter(self, evt: MessageEvent, feed_id: int, feed_filter: str) -> None:
+        if not await self.can_manage(evt):
+            return
+        sub, feed = await self.dbm.get_subscription(feed_id, evt.room_id)
+        if not sub:
+            await evt.reply("This room is not subscribed to that feed")
+            return
+        try:
+            re.compile(feed_filter)
+        except re.error:
+            await evt.reply(f"Filter is not a valid regular expression")
+            return
+        await self.dbm.update_feed_filter(feed.id, evt.room_id, feed_filter)
+        if feed_filter:
+            await evt.reply(f"Filter for feed ID {feed.id} updated")
+        else:
+            await evt.reply(f"Filter for feed ID {feed.id} removed")
 
     @event.on(EventType.ROOM_TOMBSTONE)
     async def tombstone(self, evt: StateEvent) -> None:
