@@ -22,6 +22,7 @@ from time import mktime, time
 import asyncio
 import hashlib
 import html
+import io
 
 import aiohttp
 import attr
@@ -264,7 +265,7 @@ class RSSBot(Plugin):
             except UnicodeDecodeError:
                 content = str(await resp.read())[2:-1]
         headers = {"Content-Location": feed.url, **resp.headers, "Content-Encoding": "identity"}
-        parsed_data = feedparser.parse(content, response_headers=headers)
+        parsed_data = feedparser.parse(io.StringIO(content), response_headers=headers)
         if parsed_data.bozo:
             if not isinstance(parsed_data.bozo_exception, feedparser.ThingsNobodyCaresAboutButMe):
                 raise parsed_data.bozo_exception
