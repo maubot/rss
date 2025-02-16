@@ -143,8 +143,19 @@ class DBManager:
         return [(Feed.from_row(row), row["user_id"]) for row in rows]
 
     async def get_entries(self, feed_id: int) -> list[Entry]:
+        return await self.get_entries(feed_id=feed_id,limit=0)
+
+    async def get_entries(self, feed_id: int, limit: int=0, orderDesc: bool=True) -> list[Entry]:
         q = "SELECT feed_id, id, date, title, summary, link FROM entry WHERE feed_id = $1"
-        return [Entry.from_row(row) for row in await self.db.fetch(q, feed_id)]
+        if limit == 0:
+            return [Entry.from_row(row) for row in await self.db.fetch(q, feed_id)]
+        elif orderDesc:
+            q += " order by id DESC"
+        elif not orderDesc:
+            q += " order by id ASC"
+        q += " limit $2"
+
+        return [Entry.from_row(row) for row in await self.db.fetch(q, feed_id, limit)]
 
     async def add_entries(self, entries: list[Entry], override_feed_id: int | None = None) -> None:
         if not entries:

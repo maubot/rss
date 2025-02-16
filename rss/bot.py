@@ -337,6 +337,25 @@ class RSSBot(Plugin):
     async def rss(self) -> None:
         pass
 
+    @rss.subcommand("latest", aliases=("l",), help="Get latest item for each feed.")
+    async def get_latest(self, evt: MessageEvent) -> None:
+        subs = await self.dbm.get_feeds()
+        subscriptions = await self.dbm.get_feeds_by_room(evt.room_id)
+        #feed, subscriber
+
+        if not subs:
+            return
+       
+        self.log.info(f"Polling {len(subs)} feeds")
+        for feed in subs:
+            entries = await self.dbm.get_entries(feed.id, 1)
+            for old_entry in entries:
+                for s in feed.subscriptions:
+                    if s.room_id == evt.room_id:
+                        su =s 
+                await self._send(feed, old_entry, su)
+        self.log.info(f"Finished polling {len(subs)} feeds")
+
     @rss.subcommand("subscribe", aliases=("s", "sub"), help="Subscribe this room to a feed.")
     @command.argument("url", "feed URL", pass_raw=True)
     async def subscribe(self, evt: MessageEvent, url: str) -> None:
