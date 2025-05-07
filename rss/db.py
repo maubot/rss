@@ -25,12 +25,6 @@ import attr
 from mautrix.types import RoomID, UserID
 from mautrix.util.async_db import Database, Scheme
 
-# TODO make this import unconditional after updating mautrix-python
-try:
-    from mautrix.util.async_db import SQLiteCursor
-except ImportError:
-    SQLiteCursor = None
-
 
 @dataclass
 class Subscription:
@@ -188,24 +182,9 @@ class DBManager:
             "INSERT INTO feed (url, title, subtitle, link, next_retry) "
             "VALUES ($1, $2, $3, $4, $5) RETURNING (id)"
         )
-        # SQLite only gained RETURNING support in v3.35 (2021-03-12)
-        # TODO remove this special case in a couple of years
-        if self.db.scheme == Scheme.SQLITE:
-            cur = await self.db.execute(
-                q.replace(" RETURNING (id)", ""),
-                info.url,
-                info.title,
-                info.subtitle,
-                info.link,
-                info.next_retry,
-            )
-            if SQLiteCursor is not None:
-                assert isinstance(cur, SQLiteCursor)
-            info.id = cur.lastrowid
-        else:
-            info.id = await self.db.fetchval(
-                q, info.url, info.title, info.subtitle, info.link, info.next_retry
-            )
+        info.id = await self.db.fetchval(
+            q, info.url, info.title, info.subtitle, info.link, info.next_retry
+        )
         return info
 
     async def set_backoff(self, info: Feed, error_count: int, next_retry: int) -> None:
