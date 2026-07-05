@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 from typing import Any, Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 from string import Template
 from time import mktime, monotonic, time
 import asyncio
@@ -262,7 +262,7 @@ class RSSBot(Plugin):
         try:
             date = datetime.fromisoformat(entry["date_published"])
         except (ValueError, KeyError):
-            date = datetime.now()
+            date = datetime.now(timezone.utc)
         title = entry.get("title", "")
         summary = (
             entry.get("summary") or entry.get("content_html") or entry.get("content_text") or ""
@@ -319,7 +319,7 @@ class RSSBot(Plugin):
             return datetime.fromtimestamp(mktime(entry["date_parsed"]))
         except (KeyError, TypeError, ValueError):
             pass
-        return datetime.now()
+        return datetime.now(timezone.utc)
 
     async def get_power_levels(
         self, room_id: RoomID
@@ -437,7 +437,7 @@ class RSSBot(Plugin):
         sample_entry = Entry(
             feed_id=feed.id,
             id="SAMPLE",
-            date=datetime.now(),
+            date=datetime.now(timezone.utc),
             title="Sample entry",
             summary="This is a sample entry to demonstrate your new template",
             link="http://example.com",

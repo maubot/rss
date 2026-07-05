@@ -15,7 +15,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from string import Template
 
 from asyncpg import Record
@@ -92,6 +92,10 @@ class Entry:
     summary: str
     link: str
 
+    def __attrs_post_init__(self):
+        if self.date.tzinfo is None:
+            self.date = self.date.replace(tzinfo=timezone.utc)
+
     @classmethod
     def from_row(cls, row: Record | None) -> Entry | None:
         if not row:
@@ -102,7 +106,7 @@ class Entry:
             try:
                 date = datetime.strptime(date, date_fmt_microseconds if "." in date else date_fmt)
             except ValueError:
-                date = datetime.now()
+                date = datetime.now(timezone.utc)
         return cls(**data, date=date)
 
 
