@@ -12,6 +12,9 @@ spam_sleep: 2
 command_prefix: "rss"
 # Default post notification template for new subscriptions
 notification_template: "New post in $feed_title: [$title]($link)"
+# Should non-admin users be allowed to set regex filters to drop posts from feeds?
+# Regexes are dangerous and may lead to DoS attacks.
+allow_filter: false
 # Users who can bypass room permission checks
 admins:
 - "@user:example.com"
