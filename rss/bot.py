@@ -192,7 +192,7 @@ class RSSBot(Plugin):
             await self.dbm.add_entries(new_entry_list)
             for entry in new_entry_list:
                 await self._broadcast(feed, entry, feed.subscriptions)
-        duration = monotonic() - now
+        duration = monotonic() - start
         self.log.info(f"Finished polling {len(tasks)} feeds in {duration:.2f} seconds")
 
     async def _poll_feeds(self) -> None:
