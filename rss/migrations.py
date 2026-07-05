@@ -21,8 +21,8 @@ upgrade_table = UpgradeTable()
 @upgrade_table.register(description="Latest revision", upgrades_to=5)
 async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
     gen = "GENERATED ALWAYS AS IDENTITY" if scheme != Scheme.SQLITE else ""
-    await conn.execute(
-        f"""CREATE TABLE IF NOT EXISTS feed (
+    await conn.execute(f"""
+        CREATE TABLE IF NOT EXISTS feed (
             id       INTEGER {gen},
             url      TEXT NOT NULL,
             title    TEXT NOT NULL,
@@ -34,10 +34,10 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
 
             PRIMARY KEY (id),
             UNIQUE (url)
-        )"""
-    )
-    await conn.execute(
-        """CREATE TABLE IF NOT EXISTS subscription (
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS subscription (
             feed_id INTEGER,
             room_id TEXT,
             user_id TEXT NOT NULL,
@@ -48,10 +48,10 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
 
             PRIMARY KEY (feed_id, room_id),
             FOREIGN KEY (feed_id) REFERENCES feed (id)
-        )"""
-    )
-    await conn.execute(
-        """CREATE TABLE IF NOT EXISTS entry (
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS entry (
             feed_id INTEGER,
             id      TEXT,
             date    timestamp with time zone NOT NULL,
@@ -60,8 +60,8 @@ async def upgrade_latest(conn: Connection, scheme: Scheme) -> None:
             link    TEXT NOT NULL,
             PRIMARY KEY (feed_id, id),
             FOREIGN KEY (feed_id) REFERENCES feed (id)
-        )"""
-    )
+        )
+    """)
 
 
 @upgrade_table.register(description="Add send_notice field to subscriptions")

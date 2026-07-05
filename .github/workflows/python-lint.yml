@@ -6,16 +6,17 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v3
+    - uses: actions/checkout@v7
+    - uses: actions/setup-python@v6
       with:
-        python-version: "3.13"
+        python-version: "3.14"
     - uses: isort/isort-action@master
       with:
         sortPaths: "./rss"
     - uses: psf/black@stable
       with:
         src: "./rss"
+        version: "26.5.1"
     - name: pre-commit
       run: |
         pip install pre-commit
