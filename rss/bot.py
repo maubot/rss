@@ -78,7 +78,7 @@ class RSSBot(Plugin):
     poll_task: asyncio.Future
     poll_sema: asyncio.Semaphore | None
     http: aiohttp.ClientSession
-    power_level_cache: dict[RoomID, tuple[int, PowerLevelStateEventContent]]
+    power_level_cache: dict[RoomID, tuple[int, PowerLevelStateEventContent, StateEvent]]
 
     @classmethod
     def get_config_class(cls) -> type[BaseProxyConfig]:
@@ -321,22 +321,25 @@ class RSSBot(Plugin):
             pass
         return datetime.now()
 
-    async def get_power_levels(self, room_id: RoomID) -> PowerLevelStateEventContent:
+    async def get_power_levels(
+        self, room_id: RoomID
+    ) -> tuple[PowerLevelStateEventContent, StateEvent]:
         try:
-            expiry, levels = self.power_level_cache[room_id]
+            expiry, pls, create = self.power_level_cache[room_id]
             if expiry < int(time()):
-                return levels
+                return pls, create
         except KeyError:
             pass
-        levels = await self.client.get_state_event(room_id, EventType.ROOM_POWER_LEVELS)
-        self.power_level_cache[room_id] = (int(time()) + 5 * 60, levels)
-        return levels
+        pls = await self.client.get_state_event(room_id, EventType.ROOM_POWER_LEVELS)
+        create = await self.client.get_state_event(room_id, EventType.ROOM_CREATE, format="event")
+        self.power_level_cache[room_id] = (int(time()) + 5 * 60, pls, create)
+        return pls, create
 
     async def can_manage(self, evt: MessageEvent) -> bool:
         if evt.sender in self.config["admins"]:
             return True
-        levels = await self.get_power_levels(evt.room_id)
-        user_level = levels.get_user_level(evt.sender)
+        levels, create = await self.get_power_levels(evt.room_id)
+        user_level = levels.get_user_level(evt.sender, create=create)
         state_level = levels.get_event_level(rss_change_level)
         if not isinstance(state_level, int):
             state_level = 50
