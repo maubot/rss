@@ -140,9 +140,19 @@ class DBManager:
         rows = await self.db.fetch(q, room_id)
         return [(Feed.from_row(row), row["user_id"]) for row in rows]
 
-    async def get_entries(self, feed_id: int) -> list[Entry]:
-        q = "SELECT feed_id, id, date, title, summary, link FROM entry WHERE feed_id = $1"
-        return [Entry.from_row(row) for row in await self.db.fetch(q, feed_id)]
+    async def filter_entries(self, feed_id: int, entries: dict[str, Entry]) -> None:
+        entry_keys = list(entries.keys())
+        if not entry_keys:
+            return
+        async with self.db.acquire() as conn:
+            for key in entry_keys:
+                exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM entry WHERE feed_id = $1 AND id = $2)",
+                    feed_id,
+                    key,
+                )
+                if exists:
+                    del entries[key]
 
     async def add_entries(self, entries: list[Entry], override_feed_id: int | None = None) -> None:
         if not entries:

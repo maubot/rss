@@ -178,9 +178,10 @@ class RSSBot(Plugin):
             except Exception:
                 self.log.exception(f"Weird error in items of {feed.url}")
                 continue
-            for old_entry in await self.dbm.get_entries(feed.id):
-                new_entries.pop(old_entry.id, None)
-            self.log.trace(f"Feed {feed.id} had {len(new_entries)} new entries")
+            await self.dbm.filter_entries(feed.id, new_entries)
+            self.log.trace(
+                f"Feed {feed.id} had {len(new_entries)} new entries (of {len(entries)} total)"
+            )
             new_entry_list: list[Entry] = list(new_entries.values())
             new_entry_list.sort(key=lambda entry: (entry.date, entry.id))
             await self.dbm.add_entries(new_entry_list)
